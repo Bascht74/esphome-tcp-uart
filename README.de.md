@@ -1,34 +1,40 @@
 # esphome-modbus-tcp-uart
 
-Drei TCP-Brücken für ESPHome 2026.8 oder neuer. Lizenz: MIT.
+Zwei TCP-Brücken für ESPHome 2026.8 oder neuer. Lizenz: MIT.
 
 [English](README.md)
 
 | Komponente | Was sie tut |
 |---|---|
-| `modbus_tcp_uart` | Dasselbe wie `tcp_uart` mit `protocol: modbus`. Bleibt, damit vorhandene YAML weiter lädt. |
 | `tcp_uart` | Eine UART ohne Pins. `protocol: raw` oder `protocol: modbus`, Client oder Server. |
 | `uart_tcp` | Hardware-UART auf TCP. `raw` kopiert Bytes. `modbus` wandelt RTU und MBAP. |
 
-Keine der beiden ist eine Sensor-Plattform. Ein Sensor bleibt `platform: modbus_controller` aus ESPHome. Diese Komponenten ersetzen nur die UART, die der `modbus:`-Hub liest.
+Keine der beiden ist eine Sensor-Plattform. Ein Sensor bleibt `platform: modbus_controller` aus ESPHome. `tcp_uart` ersetzt nur die UART, die der `modbus:`-Hub liest.
 
-## modbus_tcp_uart
+## tcp_uart
 
-Ein Eintrag ist entweder Client oder Server. Beides gleichzeitig sind zwei Einträge.
+Ersetzt eine UART. Sie hat keine Pins. Ein Eintrag ist entweder Client oder Server. `protocol` gilt für beide Rollen:
+
+| `protocol` | Socket | Was ESPHome liest und schreibt |
+|---|---|---|
+| `raw` | unveränderte Bytes | dieselben Bytes |
+| `modbus` | Modbus-TCP (MBAP) | Modbus-RTU |
 
 ```yaml
 external_components:
   - source: github://Bascht74/esphome-modbus-tcp-uart
-    components: [modbus_tcp_uart]
+    components: [tcp_uart]
 
-modbus_tcp_uart:
-  - id: tcp_link
+tcp_uart:
+  - id: meter
+    role: client
     host: 192.0.2.10
     port: 502
+    protocol: modbus
 
 modbus:
   - id: tcp_bus
-    uart_id: tcp_link
+    uart_id: meter
     role: client
     send_wait_time: 200ms
 
@@ -39,65 +45,35 @@ modbus_controller:
     update_interval: 1s
 ```
 
-Mehrere Controller dürfen sich eine `modbus_id` teilen. Der Hub hält eine Anfrage in der Luft und gibt die Antwort an den Auftraggeber zurück. Diese Komponente hat keine eigene Geräteliste.
+Mehrere Controller dürfen sich eine `modbus_id` teilen. Der Hub hält eine Anfrage in der Luft. `send_wait_time` bleibt unter `modbus`.
 
-Server, gleichzeitig ein TCP-Client. Dahinter spricht der normale `modbus_server` RTU. Ein echter RTU-Bus bleibt an seiner Hardware-UART.
+`role: server` lauscht. Es gibt keinen zweiten Satz Schlüssel. Dieselben gelten, nur `host` ist verboten:
+
+| Schlüssel | Standard | Am Server |
+|---|---|---|
+| `port` | — | Pflicht. Der lokale Lauschport. |
+| `protocol` | `raw` | `raw` kopiert Bytes. `modbus` spricht MBAP und gibt RTU an den Hub. |
+| `reconnect_interval` | 5s | Neuer Versuch nach fehlgeschlagenem Binden und nach einem Abbruch. |
+| `baud_rate` | 9600 | Wird nicht gesendet. Bei `protocol: modbus` nutzt der Hub sie nur als Timer. |
+
+Gleichzeitig nur ein TCP-Client. Bei `protocol: modbus` ist der `modbus:`-Hub `role: server`, die Register liegen auf `modbus_server`, nicht hier. Die Transaktionsnummer der Anfrage wird zurückgegeben. Ein echter RTU-Bus bleibt an seiner Hardware-UART.
 
 ```yaml
-modbus_tcp_uart:
-  - id: tcp_server
+tcp_uart:
+  - id: modbus_link
     role: server
     port: 502
+    protocol: modbus
 
 modbus:
   - id: server_bus
-    uart_id: tcp_server
+    uart_id: modbus_link
     role: server
 
 modbus_server:
   - modbus_id: server_bus
     address: 1
 ```
-
-| Schlüssel | Standard | Bedeutung |
-|---|---|---|
-| `role` | `client` | `client` wählt `host`. `server` lauscht. |
-| `host` | — | IPv4 oder Hostname. Pflicht für Client, verboten für Server. |
-| `port` | 502 | Zielport oder lokaler Lauschport. |
-| `reconnect_interval` | 5s | Pause nach Fehlwahl, Abbruch oder fehlgeschlagenem Lauschen. |
-
-`send_wait_time` bleibt unter `modbus`.
-
-## tcp_uart
-
-Ersetzt eine UART. Sie hat keine Pins. `protocol` wählt die Bytes auf dem Socket, beim Client und beim Server:
-
-| `protocol` | Socket | Was ESPHome liest und schreibt |
-|---|---|---|
-| `raw` | unveränderte Bytes | dieselben Bytes |
-| `modbus` | Modbus-TCP (MBAP) | Modbus-RTU |
-
-`modbus_tcp_uart` ist diese Komponente mit `protocol: modbus` und Port 502. Neue YAML kann beide Namen verwenden.
-
-```yaml
-tcp_uart:
-  - id: remote_serial
-    role: client
-    host: 192.0.2.20
-    port: 5000
-    protocol: raw
-  - id: meter
-    role: client
-    host: 192.0.2.10
-    port: 502
-    protocol: modbus
-  - id: modbus_server
-    role: server
-    port: 502
-    protocol: modbus
-```
-
-`port` ist Pflicht. `baud_rate` ist standardmäßig 9600 und wird nicht gesendet. Bei `protocol: modbus` nutzt der Hub sie nur als Timer. Die eigenen UART-Pins werden nicht weitergereicht. Das macht `uart_tcp`.
 
 ## uart_tcp
 
@@ -141,7 +117,7 @@ uart_tcp:
 
 ## Wo die Baudrate wirkt
 
-`modbus_tcp_uart` speichert 9600 8N1 und taktet keine Bits. Der Hub liest die Zahl in `Modbus::setup()`:
+`tcp_uart` speichert 9600 8N1 und taktet keine Bits. Der Hub liest die Zahl in `Modbus::setup()`:
 
 - Pause zwischen Frames = 3,5 Zeichenzeiten, bei 9600 etwa 4 ms
 - geschätzte Sendezeit = Framelänge × Bits je Zeichen / Baud
