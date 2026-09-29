@@ -80,7 +80,7 @@ Ein Client ist derselbe Eintrag mit `role: client` und einem `host`.
 
 ## protocol: modbus
 
-Nur setzen, wenn die Gegenstelle Modbus-TCP spricht. Auf dem Socket liegt dann ein MBAP-Kopf. Auf der UART-Seite bleibt Modbus-RTU, das der normale `modbus:`-Hub schon spricht. `send_wait_time` bleibt an diesem Hub. Die Register bleiben auf `modbus_controller` oder `modbus_server`.
+Optional. Setzen, wenn die Gegenstelle Modbus-TCP spricht. Der Standard bleibt `raw`. Bei `uart_tcp` gilt `response_timeout` nur in diesem Modus.
 
 ```yaml
 tcp_uart:
@@ -89,22 +89,7 @@ tcp_uart:
     host: 192.0.2.10
     port: 502
     protocol: modbus
-
-modbus:
-  - id: bus
-    uart_id: meter
-    role: client
-
-modbus_controller:
-  - id: device_1
-    modbus_id: bus
-    address: 1
-    update_interval: 1s
 ```
-
-Ein lauschender Modbus-TCP-Socket ist `role: server` an `tcp_uart` und `role: server` an `modbus:`. Bei `uart_tcp` macht `protocol: modbus` dieselbe Umwandlung an den Pins: ein TCP-Master wird zu RTU auf der Leitung, oder umgekehrt bei `role: client`. Antwortet niemand, sendet `uart_tcp` nach `response_timeout` die Modbus-Ausnahme `0x0B`.
-
-Bei `protocol: modbus` ist die Baudrate zusätzlich ein Timer im Hub: die Pause zwischen Frames beträgt etwa 3,5 Zeichenzeiten. Den TCP-Strom ändert das nicht. Bei `uart_tcp` taktet dieselbe Baudrate die Pins.
 
 ## Tests
 
