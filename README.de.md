@@ -130,10 +130,10 @@ tcp_uart:
 
 ## Tests
 
-[script/ci](script/ci) prüft jede Datei in `tests/` mit ESPHome 2026.9.0. Dieselben Jobs laufen bei jedem Push auf `main` und bei jedem GitHub-Release. Eine Datei in `tests/invalid/` muss fehlschlagen, und das Protokoll muss den Satz aus der passenden `.expect`-Datei enthalten. [tests/compile.yaml](tests/compile.yaml) wird für den ESP32 kompiliert.
+[tests/ci](tests/ci) prüft jede Datei in `tests/` mit ESPHome 2026.9.0. Dieselben Jobs laufen bei jedem Push auf `main` und bei jedem GitHub-Release. Eine Datei in `tests/invalid/` muss fehlschlagen, und das Protokoll muss den Satz aus der passenden `.expect`-Datei enthalten. [tests/compile.yaml](tests/compile.yaml) wird für den ESP32 kompiliert.
 
 ```bash
 pip install "esphome==2026.9.0"
-./script/ci
+./tests/ci
 esphome compile tests/compile.yaml
 ```
