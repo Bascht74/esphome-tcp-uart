@@ -1,12 +1,12 @@
 # esphome-modbus-tcp-uart
 
-Ein Modbus-TCP-Socket, der sich für den normalen ESPHome-`modbus_controller` wie eine UART verhält. ESPHome 2026.8 oder neuer. Lizenz: MIT.
+Ein Modbus-TCP-Socket, der sich für den normalen ESPHome-`modbus`-Hub wie eine UART verhält. ESPHome 2026.8 oder neuer. Lizenz: MIT.
 
 [English](README.md)
 
-`creepystefan/esphome_modbus_tcp` kopiert den alten Controller. Hier bleibt der Controller aus ESPHome. Die Komponente packt nur RTU-Frames in MBAP und zurück.
+Die Komponente kopiert `modbus_controller` nicht. Sie packt RTU-Frames in MBAP und zurück. Client und Server gehen denselben Weg.
 
-## Einbinden
+## Client
 
 ```yaml
 external_components:
@@ -32,14 +32,45 @@ modbus_controller:
     update_interval: 1s
 ```
 
-Pro Gerät eine Komponente und ein `modbus`-Hub. Ein echter RTU-Bus bleibt an der Hardware-UART.
+Mehrere `modbus_controller` dürfen sich eine `modbus_id` teilen. Der Hub sendet eine Anfrage nach der anderen und gibt die Antwort nur an das Gerät zurück, das sie gestellt hat.
+
+`send_wait_time` bleibt unter `modbus`. Das ist der Timer des Original-Hubs. Sensoren nutzen `platform: modbus_controller`.
+
+## Server
+
+Gleichzeitig nur ein TCP-Client. Der normale `modbus_server` spricht auf dieser UART RTU.
+
+```yaml
+modbus_tcp_uart:
+  - id: tcp_server
+    role: server
+    port: 502
+
+modbus:
+  - id: server_bus
+    uart_id: tcp_server
+    role: server
+
+modbus_server:
+  - modbus_id: server_bus
+    address: 1
+```
 
 ## Schlüssel
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
-| `host` | — | IPv4 oder Hostname |
-| `port` | 502 | TCP-Port |
-| `reconnect_interval` | 5s | Pause nach Fehler oder Abbruch |
+| `role` | `client` | `client` wählt `host`. `server` lauscht. |
+| `host` | — | IPv4 oder Hostname. Pflicht für Client, verboten für Server. |
+| `port` | 502 | Zielport oder lokaler Lauschport. |
+| `reconnect_interval` | 5s | Pause nach Fehlwahl, Abbruch oder fehlgeschlagenem Lauschen. |
 
-Wartezeit, Poll-Intervall und Registerbereiche liegen am nativen Hub und Controller: `send_wait_time` unter `modbus`, `update_interval` unter `modbus_controller`. `skip_updates` und `force_new_range` gibt es dort seit 2026.9 nicht mehr.
+Eine numerische Adresse blockiert nicht. Ein Hostname läuft über den lwIP-DNS-Callback. Der Socket wird in `on_shutdown` geschlossen. TCP-Keepalive prüft nach 30 s Ruhe.
+
+## Was nicht mitkopiert wird
+
+`skip_updates`, `force_new_range` und `command_throttle` akzeptiert der Original-Controller in 2026.9 noch. Sie ändern das Pollen nicht mehr: `skip_updates` wird ignoriert, `force_new_range` wird nach `reuse_previous_range` umgeschrieben, `command_throttle` verweist auf `turnaround_time` unter `modbus`. Entfernt werden sie 2027.2 und 2027.3, nicht 2026.9.
+
+## Kompatibilität
+
+Der C++-Teil implementiert nur die UART-Byte-Methoden (`write_array`, `peek_byte`, `read_array`, `available`, `flush`, `load_settings`, `check_logger_conflict`). Er ruft keine Interna von `modbus_controller` auf, deshalb trifft ihn das Entfernen der Helper-Shims in 2026.10 nicht. Er bricht, wenn `UARTComponent` eine neue pure virtual Methode bekommt. Dieser Satz ist in 2026.9.0 und im aktuellen `dev` gleich.

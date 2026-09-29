@@ -9,23 +9,40 @@ MULTI_CONF = True
 modbus_tcp_uart_ns = cg.esphome_ns.namespace("modbus_tcp_uart")
 ModbusTcpUart = modbus_tcp_uart_ns.class_("ModbusTcpUart", uart.UARTComponent, cg.Component)
 
+CONF_HOST = "host"
+CONF_ROLE = "role"
 CONF_RECONNECT_INTERVAL = "reconnect_interval"
 
-CONFIG_SCHEMA = cv.Schema(
-    {
-        cv.GenerateID(): cv.declare_id(ModbusTcpUart),
-        cv.Required("host"): cv.string,
-        cv.Optional(CONF_PORT, default=502): cv.port,
-        cv.Optional(CONF_RECONNECT_INTERVAL, default="5s"): cv.positive_time_period_milliseconds,
-    }
-).extend(cv.COMPONENT_SCHEMA)
+
+def _validate(config):
+    if config[CONF_ROLE] == "server" and CONF_HOST in config:
+        raise cv.Invalid("host is only used when role is client", path=[CONF_HOST])
+    if config[CONF_ROLE] == "client" and CONF_HOST not in config:
+        raise cv.Invalid("host is required when role is client", path=[CONF_HOST])
+    return config
+
+
+CONFIG_SCHEMA = cv.All(
+    cv.Schema(
+        {
+            cv.GenerateID(): cv.declare_id(ModbusTcpUart),
+            cv.Optional(CONF_ROLE, default="client"): cv.one_of("client", "server", lower=True),
+            cv.Optional(CONF_HOST): cv.string,
+            cv.Optional(CONF_PORT, default=502): cv.port,
+            cv.Optional(CONF_RECONNECT_INTERVAL, default="5s"): cv.positive_time_period_milliseconds,
+        }
+    ).extend(cv.COMPONENT_SCHEMA),
+    _validate,
+)
 
 
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
-    cg.add(var.set_host(config["host"]))
+    cg.add(var.set_server(config[CONF_ROLE] == "server"))
     cg.add(var.set_port(config[CONF_PORT]))
     cg.add(var.set_reconnect_interval(config[CONF_RECONNECT_INTERVAL]))
+    if CONF_HOST in config:
+        cg.add(var.set_host(config[CONF_HOST]))
     cg.add(var.set_baud_rate(9600))
     cg.add(var.set_rx_buffer_size(512))
