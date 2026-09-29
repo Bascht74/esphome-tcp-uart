@@ -1,4 +1,4 @@
-# esphome-modbus-tcp-uart
+# esphome-tcp-uart
 
 Zwei TCP-Brücken für ESPHome 2026.8 oder neuer. Lizenz: MIT.
 
@@ -22,7 +22,7 @@ Ersetzt eine UART. Sie hat keine Pins. Ein Eintrag ist entweder Client oder Serv
 
 ```yaml
 external_components:
-  - source: github://Bascht74/esphome-modbus-tcp-uart
+  - source: github://Bascht74/esphome-tcp-uart
     components: [tcp_uart]
 
 tcp_uart:
@@ -85,7 +85,7 @@ Kopiert Bytes zwischen einer echten UART und einem TCP-Socket. Baud, Datenbits, 
 
 ```yaml
 external_components:
-  - source: github://Bascht74/esphome-modbus-tcp-uart
+  - source: github://Bascht74/esphome-tcp-uart
     components: [uart_tcp]
 
 uart:
