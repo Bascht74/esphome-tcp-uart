@@ -1,10 +1,12 @@
 #include "uart_tcp.h"
 
 #include "esphome/core/hal.h"
+#include "esphome/core/application.h"
 #include "esphome/core/log.h"
 
 #include <cinttypes>
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 
 #include <arpa/inet.h>
@@ -21,6 +23,8 @@ namespace esphome {
 namespace uart_tcp {
 
 static const char *const TAG = "uart_tcp";
+
+uint32_t loop_time() { return App.get_loop_component_start_time(); }
 
 static uint16_t crc16(const uint8_t *data, size_t len) {
   uint16_t crc = 0xFFFF;
@@ -41,7 +45,7 @@ void UartTcp::set_link_up_(bool up) {
   }
   this->connected_ = up;
   if (up) {
-    this->last_io_ms_ = millis();
+    this->last_io_ms_ = loop_time();
   }
   this->publish_link_();
 }
@@ -52,23 +56,24 @@ void UartTcp::publish_link_() {
   }
 }
 
-void UartTcp::publish_address_(const std::string &ip) {
-  if (this->address_sensor_ == nullptr || ip.empty()) {
+void UartTcp::publish_address_(const char *ip) {
+  if (this->address_sensor_ == nullptr || ip == nullptr || ip[0] == '\0') {
     return;
   }
-  std::string next = ip + ":" + std::to_string(this->port_);
-  if (next == this->address_) {
+  char next[sizeof(this->address_)];
+  snprintf(next, sizeof(next), "%s:%u", ip, this->port_);
+  if (strcmp(next, this->address_) == 0) {
     return;
   }
-  this->address_ = std::move(next);
+  snprintf(this->address_, sizeof(this->address_), "%s", next);
   this->address_sensor_->publish_state(this->address_);
 }
 
 void UartTcp::clear_address_() {
-  if (this->address_sensor_ == nullptr || this->address_.empty()) {
+  if (this->address_sensor_ == nullptr || this->address_[0] == '\0') {
     return;
   }
-  this->address_.clear();
+  this->address_[0] = '\0';
   this->address_sensor_->publish_state("");
 }
 
@@ -99,8 +104,8 @@ void UartTcp::setup() {
 
 void UartTcp::dump_config() {
   ESP_LOGCONFIG(TAG, "UART TCP bridge:");
-  ESP_LOGCONFIG(TAG, "  Role: %s", this->server_ ? "server" : "client");
-  ESP_LOGCONFIG(TAG, "  Protocol: %s", this->modbus_ ? "modbus" : "raw");
+  ESP_LOGCONFIG(TAG, "  Role: %s", this->server_ ? LOG_STR_LITERAL("server") : LOG_STR_LITERAL("client"));
+  ESP_LOGCONFIG(TAG, "  Protocol: %s", this->modbus_ ? LOG_STR_LITERAL("modbus") : LOG_STR_LITERAL("raw"));
   if (this->server_) {
     ESP_LOGCONFIG(TAG, "  Listen: %u", this->port_);
   } else {
@@ -173,9 +178,9 @@ void UartTcp::try_resolve_() {
     return;
   }
   struct sockaddr_storage literal;
-  if (socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&literal), sizeof(literal), this->host_, this->port_) !=
-      0) {
-    this->resolved_ip_ = this->host_;
+  if (socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&literal), sizeof(literal), this->host_.c_str(),
+                           this->port_) != 0) {
+    snprintf(this->resolved_ip_, sizeof(this->resolved_ip_), "%s", this->host_.c_str());
     this->have_addr_.store(true);
     return;
   }
@@ -192,7 +197,7 @@ void UartTcp::try_resolve_() {
     return;
   }
 #else
-  struct addrinfo hints {};
+  struct addrinfo hints{};
   hints.ai_family = AF_INET;
   hints.ai_socktype = SOCK_STREAM;
   struct addrinfo *res = nullptr;
@@ -200,7 +205,7 @@ void UartTcp::try_resolve_() {
     char buf[INET_ADDRSTRLEN];
     auto *in = reinterpret_cast<struct sockaddr_in *>(res->ai_addr);
     if (inet_ntop(AF_INET, &in->sin_addr, buf, sizeof(buf)) != nullptr) {
-      this->resolved_ip_ = buf;
+      snprintf(this->resolved_ip_, sizeof(this->resolved_ip_), "%s", buf);
       this->have_addr_.store(true);
     }
     freeaddrinfo(res);
@@ -213,30 +218,30 @@ void UartTcp::try_resolve_() {
 }
 
 bool UartTcp::ip_ready_() {
-  if (!this->resolved_ip_.empty()) {
+  if (this->resolved_ip_[0] != '\0') {
     this->publish_address_(this->resolved_ip_);
     return true;
   }
   if (!this->have_addr_.load()) {
     return false;
   }
-  struct in_addr addr {};
+  struct in_addr addr{};
   addr.s_addr = this->resolved_addr_.load();
   char buf[INET_ADDRSTRLEN];
   if (inet_ntop(AF_INET, &addr, buf, sizeof(buf)) == nullptr) {
     return false;
   }
-  this->resolved_ip_ = buf;
+  snprintf(this->resolved_ip_, sizeof(this->resolved_ip_), "%s", buf);
   this->publish_address_(this->resolved_ip_);
   return true;
 }
 
 void UartTcp::try_connect_() {
-  if (this->sock_ != nullptr || millis() < this->next_connect_ms_) {
+  if (this->sock_ != nullptr || loop_time() < this->next_connect_ms_) {
     return;
   }
   if (this->resolve_failed_.exchange(false)) {
-    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
     return;
   }
   this->try_resolve_();
@@ -247,12 +252,12 @@ void UartTcp::try_connect_() {
   socklen_t dest_len =
       socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&dest), sizeof(dest), this->resolved_ip_, this->port_);
   if (dest_len == 0) {
-    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
     return;
   }
   this->sock_ = socket::socket(dest.ss_family, SOCK_STREAM, IPPROTO_TCP);
   if (this->sock_ == nullptr) {
-    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
     return;
   }
   this->apply_socket_options_(this->sock_.get());
@@ -263,28 +268,29 @@ void UartTcp::try_connect_() {
     return;
   }
   this->sock_.reset();
-  this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+  this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
 }
 
 void UartTcp::try_listen_() {
-  if (this->listen_ != nullptr || millis() < this->next_connect_ms_) {
+  if (this->listen_ != nullptr || loop_time() < this->next_connect_ms_) {
     return;
   }
   this->listen_ = socket::socket_ip_loop_monitored(SOCK_STREAM, IPPROTO_TCP);
   if (this->listen_ == nullptr) {
-    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
     return;
   }
   int yes = 1;
   this->listen_->setsockopt(SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
   this->listen_->setblocking(false);
   struct sockaddr_storage local;
-  socklen_t local_len = socket::set_sockaddr_any(reinterpret_cast<struct sockaddr *>(&local), sizeof(local), this->port_);
+  socklen_t local_len =
+      socket::set_sockaddr_any(reinterpret_cast<struct sockaddr *>(&local), sizeof(local), this->port_);
   if (local_len == 0 || this->listen_->bind(reinterpret_cast<struct sockaddr *>(&local), local_len) != 0 ||
       this->listen_->listen(1) != 0) {
     ESP_LOGW(TAG, "Listen on %u failed", this->port_);
     this->listen_.reset();
-    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
     return;
   }
   ESP_LOGI(TAG, "Listening on %u", this->port_);
@@ -321,7 +327,7 @@ void UartTcp::read_socket_() {
     socklen_t len = sizeof(err);
     if (this->sock_->getsockopt(SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0) {
       this->close_sock_();
-      this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+      this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
       return;
     }
     this->connecting_ = false;
@@ -333,7 +339,7 @@ void UartTcp::read_socket_() {
   if (count == 0 || (count < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
     ESP_LOGW(TAG, "Connection lost");
     this->close_sock_();
-    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
     return;
   }
   if (count > 0) {
@@ -355,7 +361,7 @@ void UartTcp::send_all_(const uint8_t *data, size_t len) {
     if (sent <= 0) {
       ESP_LOGW(TAG, "Send failed");
       this->close_sock_();
-      this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+      this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
       return;
     }
     sent_total += static_cast<size_t>(sent);
@@ -499,7 +505,7 @@ void UartTcp::pump_modbus_() {
         this->send_mbap_(this->pending_txn_, unit, pdu.data(), pdu.size());
         this->wait_uart_ = false;
       }
-    } else if (millis() - this->wait_started_ms_ > this->response_timeout_ms_) {
+    } else if (loop_time() - this->wait_started_ms_ > this->response_timeout_ms_) {
       ESP_LOGW(TAG, "RTU response timeout");
       this->uart_buf_.clear();
       if (this->wait_uart_) {
@@ -519,7 +525,7 @@ void UartTcp::pump_modbus_() {
         this->write_rtu_(pdu.data(), pdu.size(), unit);
       }
       this->wait_tcp_ = false;
-    } else if (millis() - this->wait_started_ms_ > this->response_timeout_ms_) {
+    } else if (loop_time() - this->wait_started_ms_ > this->response_timeout_ms_) {
       ESP_LOGW(TAG, "TCP response timeout");
       this->tcp_buf_.clear();
       this->wait_tcp_ = false;
@@ -546,7 +552,7 @@ void UartTcp::pump_modbus_() {
     this->uart_buf_.clear();
     this->write_rtu_(pdu.data(), pdu.size(), unit);
     this->wait_uart_ = true;
-    this->wait_started_ms_ = millis();
+    this->wait_started_ms_ = loop_time();
     this->last_uart_us_ = micros();
     return;
   }
@@ -561,7 +567,7 @@ void UartTcp::pump_modbus_() {
   this->pending_function_ = pdu[0];
   this->send_mbap_(this->pending_txn_, unit, pdu.data(), pdu.size());
   this->wait_tcp_ = true;
-  this->wait_started_ms_ = millis();
+  this->wait_started_ms_ = loop_time();
 }
 
 void UartTcp::write_array(const uint8_t *data, size_t len) {
@@ -589,7 +595,7 @@ bool UartTcp::read_array(uint8_t *data, size_t len) {
   }
   for (size_t i = 0; i < len; i++) {
     data[i] = this->local_rx_.front();
-    this->local_rx_.pop_front();
+    this->local_rx_.pop();
   }
   return true;
 }
@@ -610,7 +616,7 @@ void UartTcp::note_drop_() {
   }
 }
 
-void UartTcp::note_io_() { this->last_io_ms_ = millis(); }
+void UartTcp::note_io_() { this->last_io_ms_ = loop_time(); }
 
 void UartTcp::check_idle_() {
   if (!this->connected_ || this->connecting_) {
@@ -620,18 +626,18 @@ void UartTcp::check_idle_() {
   if (limit == 0 || this->last_io_ms_ == 0) {
     return;
   }
-  if (millis() - this->last_io_ms_ < limit) {
+  if (loop_time() - this->last_io_ms_ < limit) {
     return;
   }
   ESP_LOGW(TAG, "Link idle, closing");
   this->close_sock_();
-  this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+  this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
 }
 
-void UartTcp::add_allowed(const std::string &host) {
+void UartTcp::add_allowed(const char *host) {
   struct sockaddr_storage addr;
   if (socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr), host, 0) == 0) {
-    ESP_LOGW(TAG, "Ignored allowed host %s", host.c_str());
+    ESP_LOGW(TAG, "Ignored allowed host %s", host);
     return;
   }
   if (addr.ss_family != AF_INET) {
@@ -677,7 +683,7 @@ void UartTcp::send_tap_(const uint8_t *data, size_t len) {
 }
 
 void UartTcp::try_listen_tap_() {
-  if (this->tap_port_ == 0 || this->listen_tap_ != nullptr || millis() < this->next_connect_ms_) {
+  if (this->tap_port_ == 0 || this->listen_tap_ != nullptr || loop_time() < this->next_connect_ms_) {
     return;
   }
   this->listen_tap_ = socket::socket_ip_loop_monitored(SOCK_STREAM, IPPROTO_TCP);
@@ -760,16 +766,16 @@ void UartTcp::start_local_() {
   this->local_tx_.clear();
   this->uart_buf_.clear();
   this->wait_local_ = true;
-  this->wait_started_ms_ = millis();
+  this->wait_started_ms_ = loop_time();
   this->last_uart_us_ = micros();
 }
 
 void UartTcp::push_local_(const uint8_t *data, size_t len) {
   for (size_t i = 0; i < len; i++) {
     if (this->local_rx_.size() >= 512) {
-      this->local_rx_.pop_front();
+      this->local_rx_.pop();
     }
-    this->local_rx_.push_back(data[i]);
+    this->local_rx_.push(data[i]);
   }
 }
 

@@ -1,8 +1,10 @@
 #include "tcp_uart.h"
 
+#include "esphome/core/application.h"
 #include "esphome/core/log.h"
 
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 
 #include <arpa/inet.h>
@@ -21,6 +23,8 @@ namespace tcp_uart {
 
 static const char *const TAG = "tcp_uart";
 
+uint32_t loop_time() { return App.get_loop_component_start_time(); }
+
 float TcpUart::get_setup_priority() const { return setup_priority::AFTER_WIFI; }
 
 void TcpUart::set_link_up_(bool up) {
@@ -29,7 +33,7 @@ void TcpUart::set_link_up_(bool up) {
   }
   this->connected_ = up;
   if (up) {
-    this->last_io_ms_ = millis();
+    this->last_io_ms_ = loop_time();
   }
   this->publish_link_();
 }
@@ -40,23 +44,24 @@ void TcpUart::publish_link_() {
   }
 }
 
-void TcpUart::publish_address_(const std::string &ip) {
-  if (this->address_sensor_ == nullptr || ip.empty()) {
+void TcpUart::publish_address_(const char *ip) {
+  if (this->address_sensor_ == nullptr || ip == nullptr || ip[0] == '\0') {
     return;
   }
-  std::string next = ip + ":" + std::to_string(this->port_);
-  if (next == this->address_) {
+  char next[sizeof(this->address_)];
+  snprintf(next, sizeof(next), "%s:%u", ip, this->port_);
+  if (strcmp(next, this->address_) == 0) {
     return;
   }
-  this->address_ = std::move(next);
+  snprintf(this->address_, sizeof(this->address_), "%s", next);
   this->address_sensor_->publish_state(this->address_);
 }
 
 void TcpUart::clear_address_() {
-  if (this->address_sensor_ == nullptr || this->address_.empty()) {
+  if (this->address_sensor_ == nullptr || this->address_[0] == '\0') {
     return;
   }
-  this->address_.clear();
+  this->address_[0] = '\0';
   this->address_sensor_->publish_state("");
 }
 
@@ -81,13 +86,13 @@ void TcpUart::setup() {
 
 void TcpUart::dump_config() {
   ESP_LOGCONFIG(TAG, "TCP UART:");
-  ESP_LOGCONFIG(TAG, "  Role: %s", this->server_ ? "server" : "client");
+  ESP_LOGCONFIG(TAG, "  Role: %s", this->server_ ? LOG_STR_LITERAL("server") : LOG_STR_LITERAL("client"));
   if (this->server_) {
     ESP_LOGCONFIG(TAG, "  Listen: %u", this->port_);
   } else {
     ESP_LOGCONFIG(TAG, "  Host: %s:%u", this->host_.c_str(), this->port_);
   }
-  ESP_LOGCONFIG(TAG, "  Protocol: %s", this->modbus_ ? "modbus" : "raw");
+  ESP_LOGCONFIG(TAG, "  Protocol: %s", this->modbus_ ? LOG_STR_LITERAL("modbus") : LOG_STR_LITERAL("raw"));
 }
 
 void TcpUart::on_shutdown() {
@@ -152,9 +157,9 @@ void TcpUart::try_resolve_() {
     return;
   }
   struct sockaddr_storage literal;
-  if (socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&literal), sizeof(literal), this->host_, this->port_) !=
-      0) {
-    this->resolved_ip_ = this->host_;
+  if (socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&literal), sizeof(literal), this->host_.c_str(),
+                           this->port_) != 0) {
+    snprintf(this->resolved_ip_, sizeof(this->resolved_ip_), "%s", this->host_.c_str());
     this->have_addr_.store(true);
     return;
   }
@@ -171,7 +176,7 @@ void TcpUart::try_resolve_() {
     return;
   }
 #else
-  struct addrinfo hints {};
+  struct addrinfo hints{};
   hints.ai_family = AF_INET;
   hints.ai_socktype = SOCK_STREAM;
   struct addrinfo *res = nullptr;
@@ -179,7 +184,7 @@ void TcpUart::try_resolve_() {
     char buf[INET_ADDRSTRLEN];
     auto *in = reinterpret_cast<struct sockaddr_in *>(res->ai_addr);
     if (inet_ntop(AF_INET, &in->sin_addr, buf, sizeof(buf)) != nullptr) {
-      this->resolved_ip_ = buf;
+      snprintf(this->resolved_ip_, sizeof(this->resolved_ip_), "%s", buf);
       this->have_addr_.store(true);
     }
     freeaddrinfo(res);
@@ -192,30 +197,30 @@ void TcpUart::try_resolve_() {
 }
 
 bool TcpUart::ip_ready_() {
-  if (!this->resolved_ip_.empty()) {
+  if (this->resolved_ip_[0] != '\0') {
     this->publish_address_(this->resolved_ip_);
     return true;
   }
   if (!this->have_addr_.load()) {
     return false;
   }
-  struct in_addr addr {};
+  struct in_addr addr{};
   addr.s_addr = this->resolved_addr_.load();
   char buf[INET_ADDRSTRLEN];
   if (inet_ntop(AF_INET, &addr, buf, sizeof(buf)) == nullptr) {
     return false;
   }
-  this->resolved_ip_ = buf;
+  snprintf(this->resolved_ip_, sizeof(this->resolved_ip_), "%s", buf);
   this->publish_address_(this->resolved_ip_);
   return true;
 }
 
 void TcpUart::try_connect_() {
-  if (this->sock_ != nullptr || millis() < this->next_connect_ms_) {
+  if (this->sock_ != nullptr || loop_time() < this->next_connect_ms_) {
     return;
   }
   if (this->resolve_failed_.exchange(false)) {
-    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
     return;
   }
   this->try_resolve_();
@@ -226,12 +231,12 @@ void TcpUart::try_connect_() {
   socklen_t dest_len =
       socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&dest), sizeof(dest), this->resolved_ip_, this->port_);
   if (dest_len == 0) {
-    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
     return;
   }
   this->sock_ = socket::socket(dest.ss_family, SOCK_STREAM, IPPROTO_TCP);
   if (this->sock_ == nullptr) {
-    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
     return;
   }
   this->apply_socket_options_(this->sock_.get());
@@ -242,28 +247,29 @@ void TcpUart::try_connect_() {
     return;
   }
   this->sock_.reset();
-  this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+  this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
 }
 
 void TcpUart::try_listen_() {
-  if (this->listen_ != nullptr || millis() < this->next_connect_ms_) {
+  if (this->listen_ != nullptr || loop_time() < this->next_connect_ms_) {
     return;
   }
   this->listen_ = socket::socket_ip_loop_monitored(SOCK_STREAM, IPPROTO_TCP);
   if (this->listen_ == nullptr) {
-    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
     return;
   }
   int yes = 1;
   this->listen_->setsockopt(SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
   this->listen_->setblocking(false);
   struct sockaddr_storage local;
-  socklen_t local_len = socket::set_sockaddr_any(reinterpret_cast<struct sockaddr *>(&local), sizeof(local), this->port_);
+  socklen_t local_len =
+      socket::set_sockaddr_any(reinterpret_cast<struct sockaddr *>(&local), sizeof(local), this->port_);
   if (local_len == 0 || this->listen_->bind(reinterpret_cast<struct sockaddr *>(&local), local_len) != 0 ||
       this->listen_->listen(1) != 0) {
     ESP_LOGW(TAG, "Listen on %u failed", this->port_);
     this->listen_.reset();
-    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
     return;
   }
   ESP_LOGI(TAG, "Listening on %u", this->port_);
@@ -299,7 +305,7 @@ void TcpUart::read_socket_() {
     socklen_t len = sizeof(err);
     if (this->sock_->getsockopt(SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0) {
       this->close_sock_();
-      this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+      this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
       return;
     }
     this->connecting_ = false;
@@ -311,7 +317,7 @@ void TcpUart::read_socket_() {
   if (count == 0 || (count < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
     ESP_LOGW(TAG, "Connection lost");
     this->close_sock_();
-    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
     return;
   }
   if (count > 0 && this->modbus_) {
@@ -321,7 +327,7 @@ void TcpUart::read_socket_() {
     return;
   }
   for (ssize_t i = 0; i < count && this->rx_.size() < 1024; i++) {
-    this->rx_.push_back(tmp[i]);
+    this->rx_.push(tmp[i]);
   }
   if (count > 0) {
     this->note_io_();
@@ -344,7 +350,7 @@ void TcpUart::send_bytes_(const uint8_t *data, size_t len) {
     }
     ESP_LOGW(TAG, "Send failed");
     this->close_sock_();
-    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
     return;
   }
   this->note_io_();
@@ -357,7 +363,7 @@ void TcpUart::note_drop_() {
   }
 }
 
-void TcpUart::note_io_() { this->last_io_ms_ = millis(); }
+void TcpUart::note_io_() { this->last_io_ms_ = loop_time(); }
 
 void TcpUart::check_idle_() {
   if (!this->connected_ || this->connecting_) {
@@ -367,18 +373,18 @@ void TcpUart::check_idle_() {
   if (limit == 0 || this->last_io_ms_ == 0) {
     return;
   }
-  if (millis() - this->last_io_ms_ < limit) {
+  if (loop_time() - this->last_io_ms_ < limit) {
     return;
   }
   ESP_LOGW(TAG, "Link idle, closing");
   this->close_sock_();
-  this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+  this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
 }
 
-void TcpUart::add_allowed(const std::string &host) {
+void TcpUart::add_allowed(const char *host) {
   struct sockaddr_storage addr;
   if (socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr), host, 0) == 0) {
-    ESP_LOGW(TAG, "Ignored allowed host %s", host.c_str());
+    ESP_LOGW(TAG, "Ignored allowed host %s", host);
     return;
   }
   if (addr.ss_family != AF_INET) {
@@ -417,7 +423,7 @@ void TcpUart::loop() {
 
 void TcpUart::push_rx_(uint8_t byte) {
   if (this->rx_.size() < 512) {
-    this->rx_.push_back(byte);
+    this->rx_.push(byte);
   }
 }
 
@@ -524,7 +530,7 @@ bool TcpUart::read_array(uint8_t *data, size_t len) {
   }
   for (size_t i = 0; i < len; i++) {
     data[i] = this->rx_.front();
-    this->rx_.pop_front();
+    this->rx_.pop();
   }
   return true;
 }

@@ -9,6 +9,7 @@ from esphome.const import (
     ENTITY_CATEGORY_DIAGNOSTIC,
     STATE_CLASS_TOTAL_INCREASING,
 )
+from esphome.types import ConfigType
 
 DEPENDENCIES = ["network", "socket"]
 AUTO_LOAD = ["uart", "binary_sensor", "sensor", "text_sensor", "socket"]
@@ -29,7 +30,7 @@ CONF_DISCONNECTS = "disconnects"
 CONF_ALLOWED_HOSTS = "allowed_hosts"
 
 
-def _validate(config):
+def _validate(config: ConfigType) -> ConfigType:
     if config[CONF_ROLE] == "server" and CONF_HOST in config:
         raise cv.Invalid("host is only used when role is client", path=[CONF_HOST])
     if config[CONF_ROLE] == "client" and CONF_HOST not in config:
@@ -83,7 +84,7 @@ ITEM_SCHEMA = cv.All(
 CONFIG_SCHEMA = ITEM_SCHEMA
 
 
-async def to_code(config):
+async def to_code(config: ConfigType) -> None:
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     cg.add(var.set_server(config[CONF_ROLE] == "server"))
@@ -92,19 +93,16 @@ async def to_code(config):
     cg.add(var.set_reconnect_interval(config[CONF_RECONNECT_INTERVAL]))
     cg.add(var.set_stall_timeout(config[CONF_STALL_TIMEOUT]))
     cg.add(var.set_idle_timeout(config[CONF_IDLE_TIMEOUT]))
-    if CONF_HOST in config:
-        cg.add(var.set_host(config[CONF_HOST]))
+    if (host := config.get(CONF_HOST)) is not None:
+        cg.add(var.set_host(host))
     for host in config.get(CONF_ALLOWED_HOSTS, []):
         cg.add(var.add_allowed(host))
-    if CONF_CONNECTED in config:
-        sens = await binary_sensor.new_binary_sensor(config[CONF_CONNECTED])
-        cg.add(var.set_connected_sensor(sens))
-    if CONF_DISCONNECTS in config:
-        drops = await sensor.new_sensor(config[CONF_DISCONNECTS])
-        cg.add(var.set_drop_sensor(drops))
-    if CONF_ADDRESS in config:
-        address = await text_sensor.new_text_sensor(config[CONF_ADDRESS])
-        cg.add(var.set_address_sensor(address))
+    if (connected := config.get(CONF_CONNECTED)) is not None:
+        cg.add(var.set_connected_sensor(await binary_sensor.new_binary_sensor(connected)))
+    if (disconnects := config.get(CONF_DISCONNECTS)) is not None:
+        cg.add(var.set_drop_sensor(await sensor.new_sensor(disconnects)))
+    if (address := config.get(CONF_ADDRESS)) is not None:
+        cg.add(var.set_address_sensor(await text_sensor.new_text_sensor(address)))
     cg.add(var.set_baud_rate(config[CONF_BAUD_RATE]))
     cg.add(var.set_data_bits(8))
     cg.add(var.set_stop_bits(1))

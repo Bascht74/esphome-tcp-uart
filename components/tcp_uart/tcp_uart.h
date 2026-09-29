@@ -6,6 +6,8 @@
 #include "esphome/components/socket/socket.h"
 #include "esphome/components/uart/uart_component.h"
 #include "esphome/core/component.h"
+#include "esphome/core/helpers.h"
+#include "esphome/core/string_ref.h"
 
 #ifdef USE_ESP32
 #include "lwip/ip_addr.h"
@@ -13,9 +15,7 @@
 
 #include <atomic>
 #include <cstdint>
-#include <deque>
 #include <memory>
-#include <string>
 #include <vector>
 
 namespace esphome {
@@ -25,7 +25,7 @@ namespace tcp_uart {
 // protocol raw copies bytes. protocol modbus is MBAP on the socket and RTU toward ESPHome.
 class TcpUart : public uart::UARTComponent, public Component {
  public:
-  void set_host(const std::string &host) { this->host_ = host; }
+  void set_host(const char *host) { this->host_ = StringRef(host); }
   void set_port(uint16_t port) { this->port_ = port; }
   void set_reconnect_interval(uint32_t ms) { this->reconnect_interval_ms_ = ms; }
   void set_stall_timeout(uint32_t ms) { this->stall_timeout_ms_ = ms; }
@@ -35,7 +35,7 @@ class TcpUart : public uart::UARTComponent, public Component {
   void set_connected_sensor(binary_sensor::BinarySensor *sensor) { this->connected_sensor_ = sensor; }
   void set_drop_sensor(sensor::Sensor *sensor) { this->drop_sensor_ = sensor; }
   void set_address_sensor(text_sensor::TextSensor *sensor) { this->address_sensor_ = sensor; }
-  void add_allowed(const std::string &host);
+  void add_allowed(const char *host);
 
   void setup() override;
   void loop() override;
@@ -71,7 +71,7 @@ class TcpUart : public uart::UARTComponent, public Component {
   void apply_socket_options_(socket::Socket *sock);
   void set_link_up_(bool up);
   void publish_link_();
-  void publish_address_(const std::string &ip);
+  void publish_address_(const char *ip);
   void clear_address_();
   void publish_peer_(const struct sockaddr *addr);
   void note_drop_();
@@ -82,7 +82,7 @@ class TcpUart : public uart::UARTComponent, public Component {
   static void dns_found_(const char *name, const ip_addr_t *addr, void *arg);
 #endif
 
-  std::string host_;
+  StringRef host_;
   uint16_t port_{0};
   bool server_{false};
   bool modbus_{false};
@@ -102,15 +102,15 @@ class TcpUart : public uart::UARTComponent, public Component {
   binary_sensor::BinarySensor *connected_sensor_{nullptr};
   sensor::Sensor *drop_sensor_{nullptr};
   text_sensor::TextSensor *address_sensor_{nullptr};
-  std::string address_;
+  char address_[32]{};
 
   std::atomic<bool> resolving_{false};
   std::atomic<bool> resolve_failed_{false};
   std::atomic<bool> have_addr_{false};
   std::atomic<uint32_t> resolved_addr_{0};
-  std::string resolved_ip_;
+  char resolved_ip_[16]{};
 
-  std::deque<uint8_t> rx_;
+  StaticRingBuffer<uint8_t, 1024> rx_;
   std::vector<uint8_t> tx_;
   std::vector<uint8_t> tcp_buf_;
   std::vector<uint32_t> allowed_;
