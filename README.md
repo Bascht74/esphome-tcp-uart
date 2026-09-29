@@ -7,7 +7,7 @@ This repository adds two components that connect a [UART bus](https://esphome.io
 
 Bytes are copied unchanged. Set `protocol: modbus` when the other end speaks Modbus TCP. Loading an [external component](https://esphome.io/components/external_components.html) and setting up [Modbus](https://esphome.io/components/modbus.html) are documented by ESPHome.
 
-For ESPHome 2026.8 or newer.
+For ESPHome 2026.10 or newer.
 
 [Deutsche Fassung](README.de.md)
 

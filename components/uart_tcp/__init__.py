@@ -106,12 +106,12 @@ async def to_code(config: ConfigType) -> None:
         cg.add(var.set_tap_port(tap_port))
     for host in config.get(CONF_ALLOWED_HOSTS, []):
         cg.add(var.add_allowed(host))
-    if (connected := config.get(CONF_CONNECTED)) is not None:
-        cg.add(var.set_connected_sensor(await binary_sensor.new_binary_sensor(connected)))
-    if (disconnects := config.get(CONF_DISCONNECTS)) is not None:
-        cg.add(var.set_drop_sensor(await sensor.new_sensor(disconnects)))
-    if (address := config.get(CONF_ADDRESS)) is not None:
-        cg.add(var.set_address_sensor(await text_sensor.new_text_sensor(address)))
+    binary_sensors = binary_sensor.sub_binary_sensors(config)
+    await binary_sensors(CONF_CONNECTED, var.set_connected_sensor)
+    sensors = sensor.sub_sensors(config)
+    await sensors(CONF_DISCONNECTS, var.set_drop_sensor)
+    text_sensors = text_sensor.sub_text_sensors(config)
+    await text_sensors(CONF_ADDRESS, var.set_address_sensor)
     cg.add(var.set_baud_rate(9600))
     cg.add(var.set_data_bits(8))
     cg.add(var.set_stop_bits(1))
