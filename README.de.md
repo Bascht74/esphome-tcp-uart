@@ -50,6 +50,7 @@ tcp_uart:
 | `port` | — | Pflicht. Port auf diesem Host. |
 | `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
 | `reconnect_interval` | 5s | Pause nach Fehlwahl oder Abbruch. |
+| `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
 
 ### `tcp_uart` Server
 
@@ -68,6 +69,7 @@ tcp_uart:
 | `port` | — | Pflicht. Port auf diesem Gerät. |
 | `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
 | `reconnect_interval` | 5s | Pause nach fehlgeschlagenem Lauschen oder Abbruch. |
+| `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
 
 ## uart_tcp
 
@@ -93,6 +95,7 @@ uart_tcp:
 | `port` | — | Pflicht. Port auf diesem Host. |
 | `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
 | `reconnect_interval` | 5s | Pause nach Fehlwahl oder Abbruch. |
+| `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
 | `response_timeout` | 300ms | Nur bei `protocol: modbus`. |
 
 ### `uart_tcp` Server
@@ -111,6 +114,7 @@ uart_tcp:
 | `port` | — | Pflicht. Port auf diesem Gerät. |
 | `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
 | `reconnect_interval` | 5s | Pause nach fehlgeschlagenem Lauschen oder Abbruch. |
+| `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
 | `response_timeout` | 300ms | Nur bei `protocol: modbus`. |
 
 ## Beide Rollen

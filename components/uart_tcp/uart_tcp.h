@@ -1,5 +1,6 @@
 #pragma once
 
+#include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/core/component.h"
 
@@ -23,6 +24,7 @@ class UartTcp : public Component, public uart::UARTDevice {
   void set_response_timeout(uint32_t ms) { this->response_timeout_ms_ = ms; }
   void set_server(bool server) { this->server_ = server; }
   void set_modbus(bool modbus) { this->modbus_ = modbus; }
+  void set_connected_sensor(binary_sensor::BinarySensor *sensor) { this->connected_sensor_ = sensor; }
 
   void setup() override;
   void loop() override;
@@ -48,6 +50,8 @@ class UartTcp : public Component, public uart::UARTDevice {
   bool take_mbap_(std::vector<uint8_t> *pdu, uint8_t *unit, uint16_t *txn);
   bool take_rtu_(std::vector<uint8_t> *pdu, uint8_t *unit);
   void pull_uart_();
+  void set_link_up_(bool up);
+  void publish_link_();
   uint32_t frame_gap_us_() const;
   static void dns_found_(const char *name, const ip_addr_t *addr, void *arg);
 
@@ -70,6 +74,7 @@ class UartTcp : public Component, public uart::UARTDevice {
   bool wait_tcp_{false};
   uint32_t wait_started_ms_{0};
   uint32_t last_uart_us_{0};
+  binary_sensor::BinarySensor *connected_sensor_{nullptr};
 
   std::atomic<bool> resolving_{false};
   std::atomic<bool> resolve_failed_{false};

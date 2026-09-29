@@ -1,9 +1,10 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import uart
-from esphome.const import CONF_ID, CONF_PORT
+from esphome.components import binary_sensor, uart
+from esphome.const import CONF_ID, CONF_PORT, DEVICE_CLASS_CONNECTIVITY, ENTITY_CATEGORY_DIAGNOSTIC
 
 DEPENDENCIES = ["network", "uart"]
+AUTO_LOAD = ["binary_sensor"]
 MULTI_CONF = True
 
 uart_tcp_ns = cg.esphome_ns.namespace("uart_tcp")
@@ -14,6 +15,7 @@ CONF_ROLE = "role"
 CONF_PROTOCOL = "protocol"
 CONF_RECONNECT_INTERVAL = "reconnect_interval"
 CONF_RESPONSE_TIMEOUT = "response_timeout"
+CONF_CONNECTED = "connected"
 
 
 def _validate(config):
@@ -34,6 +36,10 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_HOST): cv.string,
             cv.Optional(CONF_RECONNECT_INTERVAL, default="5s"): cv.positive_time_period_milliseconds,
             cv.Optional(CONF_RESPONSE_TIMEOUT, default="300ms"): cv.positive_time_period_milliseconds,
+            cv.Optional(CONF_CONNECTED): binary_sensor.binary_sensor_schema(
+                device_class=DEVICE_CLASS_CONNECTIVITY,
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -53,3 +59,6 @@ async def to_code(config):
     cg.add(var.set_response_timeout(config[CONF_RESPONSE_TIMEOUT]))
     if CONF_HOST in config:
         cg.add(var.set_host(config[CONF_HOST]))
+    if CONF_CONNECTED in config:
+        sens = await binary_sensor.new_binary_sensor(config[CONF_CONNECTED])
+        cg.add(var.set_connected_sensor(sens))

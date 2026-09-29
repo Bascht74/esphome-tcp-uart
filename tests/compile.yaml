@@ -24,10 +24,14 @@ tcp_uart:
     host: 192.0.2.10
     port: 502
     protocol: modbus
+    connected:
+      name: "Meter link"
   - id: raw_link
     role: server
     port: 5000
     protocol: raw
+    connected:
+      name: "Raw link"
 
 uart:
   - id: bus
@@ -59,3 +63,5 @@ uart_tcp:
     role: server
     port: 1502
     protocol: modbus
+    connected:
+      name: "Bus link"

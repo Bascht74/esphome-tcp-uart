@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esphome/core/component.h"
+#include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/uart/uart_component.h"
 
 #include "lwip/ip_addr.h"
@@ -23,6 +24,7 @@ class TcpUart : public uart::UARTComponent, public Component {
   void set_reconnect_interval(uint32_t ms) { this->reconnect_interval_ms_ = ms; }
   void set_server(bool server) { this->server_ = server; }
   void set_modbus(bool modbus) { this->modbus_ = modbus; }
+  void set_connected_sensor(binary_sensor::BinarySensor *sensor) { this->connected_sensor_ = sensor; }
 
   void setup() override;
   void loop() override;
@@ -53,6 +55,8 @@ class TcpUart : public uart::UARTComponent, public Component {
   void push_rx_(uint8_t byte);
   void send_bytes_(const uint8_t *data, size_t len);
   void apply_socket_options_(int fd);
+  void set_link_up_(bool up);
+  void publish_link_();
   static void dns_found_(const char *name, const ip_addr_t *addr, void *arg);
 
   std::string host_;
@@ -68,6 +72,7 @@ class TcpUart : public uart::UARTComponent, public Component {
   uint16_t txn_{0};
   uint16_t last_request_txn_{0};
   bool response_pending_{false};
+  binary_sensor::BinarySensor *connected_sensor_{nullptr};
 
   std::atomic<bool> resolving_{false};
   std::atomic<bool> resolve_failed_{false};

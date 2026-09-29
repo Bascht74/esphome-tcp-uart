@@ -50,6 +50,7 @@ tcp_uart:
 | `port` | — | Required. Port on that host. |
 | `protocol` | `raw` | `modbus` if the peer speaks Modbus TCP. |
 | `reconnect_interval` | 5s | Pause after a failed dial or a dropped link. |
+| `connected` | — | Optional. On while this TCP connection is up. |
 
 ### `tcp_uart` server
 
@@ -68,6 +69,7 @@ tcp_uart:
 | `port` | — | Required. Port on this device. |
 | `protocol` | `raw` | `modbus` if the peer speaks Modbus TCP. |
 | `reconnect_interval` | 5s | Pause after a failed listen or a dropped link. |
+| `connected` | — | Optional. On while this TCP connection is up. |
 
 ## uart_tcp
 
@@ -93,6 +95,7 @@ uart_tcp:
 | `port` | — | Required. Port on that host. |
 | `protocol` | `raw` | `modbus` if the peer speaks Modbus TCP. |
 | `reconnect_interval` | 5s | Pause after a failed dial or a dropped link. |
+| `connected` | — | Optional. On while this TCP connection is up. |
 | `response_timeout` | 300ms | Only for `protocol: modbus`. |
 
 ### `uart_tcp` server
@@ -111,6 +114,7 @@ uart_tcp:
 | `port` | — | Required. Port on this device. |
 | `protocol` | `raw` | `modbus` if the peer speaks Modbus TCP. |
 | `reconnect_interval` | 5s | Pause after a failed listen or a dropped link. |
+| `connected` | — | Optional. On while this TCP connection is up. |
 | `response_timeout` | 300ms | Only for `protocol: modbus`. |
 
 ## Both roles

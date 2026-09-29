@@ -1,10 +1,10 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import uart
-from esphome.const import CONF_BAUD_RATE, CONF_ID, CONF_PORT
+from esphome.components import binary_sensor, uart
+from esphome.const import CONF_BAUD_RATE, CONF_ID, CONF_PORT, DEVICE_CLASS_CONNECTIVITY, ENTITY_CATEGORY_DIAGNOSTIC
 
 DEPENDENCIES = ["network"]
-AUTO_LOAD = ["uart"]
+AUTO_LOAD = ["uart", "binary_sensor"]
 MULTI_CONF = True
 
 tcp_uart_ns = cg.esphome_ns.namespace("tcp_uart")
@@ -14,6 +14,7 @@ CONF_HOST = "host"
 CONF_ROLE = "role"
 CONF_PROTOCOL = "protocol"
 CONF_RECONNECT_INTERVAL = "reconnect_interval"
+CONF_CONNECTED = "connected"
 
 
 def _validate(config):
@@ -34,6 +35,10 @@ ITEM_SCHEMA = cv.All(
             cv.Required(CONF_PORT): cv.port,
             cv.Optional(CONF_BAUD_RATE, default=9600): cv.int_range(min=1),
             cv.Optional(CONF_RECONNECT_INTERVAL, default="5s"): cv.positive_time_period_milliseconds,
+            cv.Optional(CONF_CONNECTED): binary_sensor.binary_sensor_schema(
+                device_class=DEVICE_CLASS_CONNECTIVITY,
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
         }
     ).extend(cv.COMPONENT_SCHEMA),
     _validate,
@@ -52,6 +57,9 @@ async def to_code(config):
     cg.add(var.set_reconnect_interval(config[CONF_RECONNECT_INTERVAL]))
     if CONF_HOST in config:
         cg.add(var.set_host(config[CONF_HOST]))
+    if CONF_CONNECTED in config:
+        sens = await binary_sensor.new_binary_sensor(config[CONF_CONNECTED])
+        cg.add(var.set_connected_sensor(sens))
     cg.add(var.set_baud_rate(config[CONF_BAUD_RATE]))
     cg.add(var.set_data_bits(8))
     cg.add(var.set_stop_bits(1))

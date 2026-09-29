@@ -21,7 +21,21 @@ static const char *const TAG = "tcp_uart";
 
 float TcpUart::get_setup_priority() const { return setup_priority::AFTER_WIFI; }
 
-void TcpUart::setup() {}
+void TcpUart::set_link_up_(bool up) {
+  if (this->connected_ == up) {
+    return;
+  }
+  this->connected_ = up;
+  this->publish_link_();
+}
+
+void TcpUart::publish_link_() {
+  if (this->connected_sensor_ != nullptr) {
+    this->connected_sensor_->publish_state(this->connected_);
+  }
+}
+
+void TcpUart::setup() { this->publish_link_(); }
 
 void TcpUart::dump_config() {
   ESP_LOGCONFIG(TAG, "TCP UART:");
@@ -46,7 +60,7 @@ void TcpUart::close_sock_() {
   }
   this->sock_ = -1;
   this->connecting_ = false;
-  this->connected_ = false;
+  this->set_link_up_(false);
   this->rx_.clear();
   this->tx_.clear();
   this->tcp_buf_.clear();
@@ -138,7 +152,7 @@ void TcpUart::try_connect_() {
   if (rc == 0 || errno == EINPROGRESS) {
     this->sock_ = fd;
     this->connecting_ = rc != 0;
-    this->connected_ = rc == 0;
+    this->set_link_up_(rc == 0);
     return;
   }
   ::close(fd);
@@ -184,7 +198,7 @@ void TcpUart::accept_client_() {
   fcntl(fd, F_SETFL, flags | O_NONBLOCK);
   this->apply_socket_options_(fd);
   this->sock_ = fd;
-  this->connected_ = true;
+  this->set_link_up_(true);
   ESP_LOGI(TAG, "Client connected");
 }
 
@@ -201,7 +215,7 @@ void TcpUart::read_socket_() {
       return;
     }
     this->connecting_ = false;
-    this->connected_ = true;
+    this->set_link_up_(true);
     ESP_LOGI(TAG, "Connected to %s:%u", this->host_.c_str(), this->port_);
   }
   uint8_t tmp[128];

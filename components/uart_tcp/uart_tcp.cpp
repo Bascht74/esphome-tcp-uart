@@ -34,7 +34,24 @@ static uint16_t crc16(const uint8_t *data, size_t len) {
 
 float UartTcp::get_setup_priority() const { return setup_priority::AFTER_WIFI; }
 
-void UartTcp::setup() { this->tcp_buf_.reserve(300); }
+void UartTcp::set_link_up_(bool up) {
+  if (this->connected_ == up) {
+    return;
+  }
+  this->connected_ = up;
+  this->publish_link_();
+}
+
+void UartTcp::publish_link_() {
+  if (this->connected_sensor_ != nullptr) {
+    this->connected_sensor_->publish_state(this->connected_);
+  }
+}
+
+void UartTcp::setup() {
+  this->tcp_buf_.reserve(300);
+  this->publish_link_();
+}
 
 void UartTcp::dump_config() {
   ESP_LOGCONFIG(TAG, "UART TCP bridge:");
@@ -60,7 +77,7 @@ void UartTcp::close_sock_() {
   }
   this->sock_ = -1;
   this->connecting_ = false;
-  this->connected_ = false;
+  this->set_link_up_(false);
   this->tcp_buf_.clear();
   this->uart_buf_.clear();
   this->wait_uart_ = false;
@@ -152,7 +169,7 @@ void UartTcp::try_connect_() {
   if (rc == 0 || errno == EINPROGRESS) {
     this->sock_ = fd;
     this->connecting_ = rc != 0;
-    this->connected_ = rc == 0;
+    this->set_link_up_(rc == 0);
     return;
   }
   ::close(fd);
@@ -198,7 +215,7 @@ void UartTcp::accept_client_() {
   fcntl(fd, F_SETFL, flags | O_NONBLOCK);
   this->apply_socket_options_(fd);
   this->sock_ = fd;
-  this->connected_ = true;
+  this->set_link_up_(true);
   this->tcp_buf_.clear();
   ESP_LOGI(TAG, "Client connected");
 }
@@ -216,7 +233,7 @@ void UartTcp::read_socket_() {
       return;
     }
     this->connecting_ = false;
-    this->connected_ = true;
+    this->set_link_up_(true);
     ESP_LOGI(TAG, "Connected to %s:%u", this->host_.c_str(), this->port_);
   }
   uint8_t tmp[128];
