@@ -1,24 +1,19 @@
 # esphome-tcp-uart
 
-Two TCP bridges for ESPHome 2026.8 or newer. License: MIT.
+Two ways to put a UART on TCP, for ESPHome 2026.8 or newer. License: MIT.
 
 [Deutsche Fassung](README.de.md)
 
-| Component | What it does |
+| Component | Direction |
 |---|---|
-| `tcp_uart` | A UART with no pins. `protocol: raw` or `protocol: modbus`, client or server. |
-| `uart_tcp` | Hardware UART pins to TCP. `raw` copies bytes. `modbus` converts RTU and MBAP. |
+| `tcp_uart` | A component with `uart_id` talks to a TCP socket. No pins. |
+| `uart_tcp` | The pins are a real UART. The other end is a TCP socket. |
 
-Neither component is a sensor platform. A sensor still uses `platform: modbus_controller` from ESPHome. `tcp_uart` only replaces the UART the `modbus:` hub reads.
+The bytes are the same on both ends. `protocol: modbus` is optional and is described last. These components are not sensors. Anything that already takes `uart_id` can use them.
 
 ## tcp_uart
 
-Replaces a UART. It has no pins. One entry is either a client or a server. `protocol` selects the bytes, for both roles:
-
-| `protocol` | Socket | What ESPHome reads and writes |
-|---|---|---|
-| `raw` | unchanged bytes | the same bytes |
-| `modbus` | Modbus TCP (MBAP) | Modbus RTU |
+Replaces a UART. The other side must already speak raw TCP. There are no GPIO pins and no RS-232 levels. One entry is a client or a server, not both.
 
 ```yaml
 external_components:
@@ -26,62 +21,26 @@ external_components:
     components: [tcp_uart]
 
 tcp_uart:
-  - id: meter
+  - id: remote_serial
     role: client
-    host: 192.0.2.10
-    port: 502
-    protocol: modbus
-
-modbus:
-  - id: tcp_bus
-    uart_id: meter
-    role: client
-    send_wait_time: 200ms
-
-modbus_controller:
-  - id: device_1
-    modbus_id: tcp_bus
-    address: 1
-    update_interval: 1s
+    host: 192.0.2.20
+    port: 5000
 ```
 
-Several controllers may share one `modbus_id`. The hub keeps a single in-flight request. `send_wait_time` stays on `modbus`.
+`role: server` uses the same keys. `host` is then forbidden. One TCP client at a time.
 
-`role: server` listens. There is no second set of keys. The same ones apply, except `host` is forbidden:
-
-| Key | Default | On a server |
+| Key | Default | Meaning |
 |---|---|---|
-| `port` | — | Required. The local listen port. |
-| `protocol` | `raw` | `raw` copies bytes. `modbus` speaks MBAP and hands RTU to the hub. |
-| `reconnect_interval` | 5s | Retry after a failed bind, and after the client drops. |
-| `baud_rate` | 9600 | Not sent. With `protocol: modbus` the hub uses it only as a timer. |
-
-One TCP client at a time. With `protocol: modbus` the stock `modbus:` hub is `role: server`, and register maps live on `modbus_server`, not here. The transaction id from the request is echoed. A hardware RTU bus stays on a real UART.
-
-```yaml
-tcp_uart:
-  - id: modbus_link
-    role: server
-    port: 502
-    protocol: modbus
-
-modbus:
-  - id: server_bus
-    uart_id: modbus_link
-    role: server
-
-modbus_server:
-  - modbus_id: server_bus
-    address: 1
-```
+| `role` | `client` | `client` dials `host`. `server` listens. |
+| `host` | — | Required for a client, forbidden for a server. |
+| `port` | — | Required. Remote port, or the local listen port. |
+| `protocol` | `raw` | `raw` copies bytes. `modbus` is the section below. |
+| `baud_rate` | 9600 | Stored only. It is not sent and it does not clock a pin. |
+| `reconnect_interval` | 5s | Pause after a failed dial, a dropped link, or a failed listen. |
 
 ## uart_tcp
 
-Copies bytes between a real UART and one TCP socket. Baud, data bits, parity, and stop bits belong on that `uart:` entry. They clock the pins. `port` is the TCP port. One TCP client at a time in `role: server`.
-
-`protocol: raw` copies bytes unchanged. A Modbus RTU device then appears on TCP as RTU, without an MBAP header.
-
-`protocol: modbus` speaks Modbus TCP on the socket and Modbus RTU on the pins. `role: server` accepts a TCP master and queries the bus. `role: client` dials a TCP slave and forwards RTU requests from a master on the pins.
+Copies bytes between a hardware UART and one TCP socket. Baud, data bits, parity, and stop bits belong on that `uart:` entry, because those pins are clocked. `port` is the TCP port. `role: server` accepts one client.
 
 ```yaml
 external_components:
@@ -100,9 +59,7 @@ uart:
 uart_tcp:
   - uart_id: bus
     role: server
-    port: 502
-    protocol: modbus
-    response_timeout: 300ms
+    port: 5000
 ```
 
 | Key | Default | Meaning |
@@ -110,23 +67,48 @@ uart_tcp:
 | `uart_id` | — | Hardware UART. Baud and framing are set there. |
 | `port` | — | Required TCP port. |
 | `role` | `server` | `server` listens. `client` dials `host`. |
-| `protocol` | `raw` | `raw` copies bytes. `modbus` converts MBAP and RTU. |
+| `protocol` | `raw` | `raw` copies bytes. `modbus` is the section below. |
 | `host` | — | Required for a client, forbidden for a server. |
-| `reconnect_interval` | 5s | Delay after a failed dial, a dead link, or a failed listen. |
-| `response_timeout` | 300ms | Used only for `protocol: modbus`. |
+| `reconnect_interval` | 5s | Pause after a failed dial, a dropped link, or a failed listen. |
+| `response_timeout` | 300ms | Used only with `protocol: modbus`. |
 
-## Where baud rate matters
+A client is the same entry with `role: client` and a `host`.
 
-`tcp_uart` stores 9600 8N1 and never paces bits. The stock hub reads that number in `Modbus::setup()`:
+## Baud rate
 
-- inter-frame gap = 3.5 character times, about 4 ms at 9600
-- estimated transmit time = frame length × bits per character / baud
+`tcp_uart` never paces bits. Its `baud_rate` is only there so a component can read it back. `uart_tcp` uses the baud of its hardware UART to clock the pins. The socket itself has no baud rate.
 
-Both are timers inside the hub. They do not change the TCP stream. A real bus sets its own `baud_rate` on its own `uart:` entry. `tcp_uart` stores `baud_rate` for the same kind of check and does not use it as a clock. `uart_tcp` uses the baud of its hardware UART both to clock the pins and, in `protocol: modbus`, as the 3.5-character gap between RTU frames.
+## protocol: modbus
+
+Set this only when the TCP peer speaks Modbus TCP. The socket then carries an MBAP header. The UART side stays Modbus RTU, which is what the stock `modbus:` hub already speaks. `send_wait_time` stays on that hub. Register maps stay on `modbus_controller` or `modbus_server`.
+
+```yaml
+tcp_uart:
+  - id: meter
+    role: client
+    host: 192.0.2.10
+    port: 502
+    protocol: modbus
+
+modbus:
+  - id: bus
+    uart_id: meter
+    role: client
+
+modbus_controller:
+  - id: device_1
+    modbus_id: bus
+    address: 1
+    update_interval: 1s
+```
+
+A listening Modbus TCP socket is `role: server` on `tcp_uart` and `role: server` on `modbus:`. On `uart_tcp`, `protocol: modbus` does the same conversion on the pins: a TCP master is turned into RTU on the wire, or the reverse for `role: client`. If the peer does not answer, `uart_tcp` sends Modbus exception `0x0B` after `response_timeout`.
+
+With `protocol: modbus`, the baud value is also a timer inside the stock hub: the gap between frames is about 3.5 character times. It still does not change the TCP stream. On `uart_tcp` the same baud clocks the pins.
 
 ## Tests
 
-GitHub Actions installs ESPHome 2026.9.0 and runs [script/ci](script/ci). That validates every file in `tests/` with `esphome config`. Each file in `tests/invalid/` must be rejected, and the output must contain the sentence in the matching `.expect` file. A failure for some other reason does not count. A second job compiles [tests/compile.yaml](tests/compile.yaml) for ESP32 (ESP-IDF), which builds `tcp_uart` in both protocols and `uart_tcp`.
+GitHub Actions installs ESPHome 2026.9.0 and runs [script/ci](script/ci). That validates every file in `tests/` with `esphome config`. Each file in `tests/invalid/` must be rejected, and the output must contain the sentence in the matching `.expect` file. A failure for some other reason does not count. A second job compiles [tests/compile.yaml](tests/compile.yaml) for ESP32.
 
 ```bash
 pip install "esphome==2026.9.0"
@@ -136,6 +118,4 @@ esphome compile tests/compile.yaml
 
 ## Compatibility
 
-Both components implement only the UART byte methods. They do not call `modbus_controller` internals. The helper-shim removal in 2026.10 does not apply. They break if `UARTComponent` gains a new pure virtual. That set is the same in 2026.9.0 and current `dev`.
-
-`skip_updates`, `force_new_range`, and `command_throttle` still parse on the stock controller in 2026.9 and no longer change polling. Removal is scheduled for 2027.2 and 2027.3.
+Both components implement only the UART byte methods. They break if `UARTComponent` gains a new pure virtual. That set is the same in 2026.9.0 and current `dev`.
