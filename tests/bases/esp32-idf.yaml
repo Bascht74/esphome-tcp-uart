@@ -1,0 +1,10 @@
+esphome:
+  name: componenttestesp32idf
+  min_version: 2026.9.0
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:

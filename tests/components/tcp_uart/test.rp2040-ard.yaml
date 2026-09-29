@@ -1,0 +1,8 @@
+packages:
+  device: !include ../../bases/rp2040-ard.yaml
+  tcp_uart: !include common.yaml
+
+external_components:
+  - source:
+      type: local
+      path: ../../../components

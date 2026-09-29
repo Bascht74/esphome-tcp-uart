@@ -1,0 +1,33 @@
+esphome:
+  name: uart-tcp-host
+  min_version: 2026.9.0
+
+host:
+
+logger:
+
+external_components:
+  - source:
+      type: local
+      path: ../../../components
+
+uart:
+  - id: uart_tcp_host_bus
+    baud_rate: 9600
+    port: /dev/ttyS0
+
+uart_tcp:
+  - id: uart_tcp_1
+    uart_id: uart_tcp_host_bus
+    role: client
+    host: 127.0.0.1
+    port: 44502
+    connected:
+      name: UART TCP Connected
+
+interval:
+  - interval: 60s
+    then:
+      - uart.write:
+          id: uart_tcp_host_bus
+          data: [0x00, 0x20, 0x42]

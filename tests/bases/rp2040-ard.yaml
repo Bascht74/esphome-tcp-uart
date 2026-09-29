@@ -1,0 +1,8 @@
+esphome:
+  name: componenttestrp2040ard
+  min_version: 2026.9.0
+
+rp2:
+  board: rpipicow
+
+logger:

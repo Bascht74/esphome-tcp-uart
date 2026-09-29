@@ -1,0 +1,27 @@
+packages:
+  device: !include ../../bases/esp32-idf.yaml
+  uart: !include ../../buses/uart/esp32-idf.yaml
+
+external_components:
+  - source:
+      type: local
+      path: ../../../components
+
+wifi:
+  ssid: MySSID
+  password: password1
+
+uart_tcp:
+  - id: uart_tcp_1
+    uart_id: uart_bus
+    role: server
+    port: 502
+    protocol: modbus
+  - id: uart_tcp_client_1
+    uart_id: uart_bus
+    role: client
+    host: 192.0.2.30
+    port: 5000
+    protocol: raw
+    address:
+      name: Remote address

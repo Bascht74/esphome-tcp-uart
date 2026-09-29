@@ -1,0 +1,9 @@
+packages:
+  device: !include ../../bases/esp8266-ard.yaml
+  uart: !include ../../buses/uart/esp8266-ard.yaml
+  uart_tcp: !include common.yaml
+
+external_components:
+  - source:
+      type: local
+      path: ../../../components

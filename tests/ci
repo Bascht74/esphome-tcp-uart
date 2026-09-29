@@ -14,7 +14,7 @@ fi
 echo "ESPHome $(esphome version)"
 
 shopt -s nullglob
-valid=("$root"/tests/*.yaml)
+valid=("$root"/tests/compile.yaml "$root"/tests/components/*/test*.yaml)
 invalid=("$root"/tests/invalid/*.yaml)
 
 if [[ ${#valid[@]} -eq 0 || ${#invalid[@]} -eq 0 ]]; then

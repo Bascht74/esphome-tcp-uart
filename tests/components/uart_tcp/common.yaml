@@ -1,0 +1,20 @@
+wifi:
+  ssid: MySSID
+  password: password1
+
+uart_tcp:
+  - id: uart_tcp_1
+    uart_id: uart_bus
+    role: server
+    port: 502
+    connected:
+      name: UART TCP Connected
+    address:
+      name: UART TCP Address
+
+interval:
+  - interval: 60s
+    then:
+      - uart.write:
+          id: uart_bus
+          data: [0x00, 0x20, 0x42]

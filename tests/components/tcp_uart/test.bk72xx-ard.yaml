@@ -1,0 +1,8 @@
+packages:
+  device: !include ../../bases/bk72xx-ard.yaml
+  tcp_uart: !include common.yaml
+
+external_components:
+  - source:
+      type: local
+      path: ../../../components

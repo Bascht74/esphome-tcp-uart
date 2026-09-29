@@ -1,0 +1,22 @@
+packages:
+  device: !include ../../bases/esp32-idf.yaml
+
+external_components:
+  - source:
+      type: local
+      path: ../../../components
+
+wifi:
+  ssid: MySSID
+  password: password1
+
+tcp_uart:
+  - id: tcp_uart_1
+    role: server
+    port: 502
+    protocol: modbus
+
+modbus:
+  - id: modbus_bus
+    uart_id: tcp_uart_1
+    role: server

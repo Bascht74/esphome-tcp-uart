@@ -1,0 +1,9 @@
+packages:
+  device: !include ../../bases/esp32-idf.yaml
+  uart: !include ../../buses/uart/esp32-idf.yaml
+  uart_tcp: !include common.yaml
+
+external_components:
+  - source:
+      type: local
+      path: ../../../components

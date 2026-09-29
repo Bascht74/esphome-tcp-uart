@@ -1,0 +1,8 @@
+esphome:
+  name: componenttestln882xard
+  min_version: 2026.9.0
+
+ln882x:
+  board: generic-ln882h
+
+logger:

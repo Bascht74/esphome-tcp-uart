@@ -1,17 +1,15 @@
 # esphome-tcp-uart
 
-ESPHome bietet eine UART nur an Pins. Diese Komponenten verbinden diese UART mit einem TCP-Socket, in beide Richtungen. Eine Komponente, die schon `uart_id` nimmt, funktioniert weiter, wenn die Gegenseite im Netz liegt. Ein Gerät an den Pins ist vom Netz aus erreichbar.
+Dieses Repository fügt zwei Komponenten hinzu, die eine [UART](https://esphome.io/components/uart.html) mit einem TCP-Socket verbinden.
+
+- `tcp_uart` hat keine Pins. Eine andere Komponente nutzt die Id als `uart_id`.
+- `uart_tcp` kopiert Bytes zwischen einer Hardware-UART und einem TCP-Socket.
+
+Die Bytes werden unverändert kopiert. `protocol: modbus` setzen, wenn die Gegenseite Modbus-TCP spricht. Eine [externe Komponente laden](https://esphome.io/components/external_components.html) und [Modbus](https://esphome.io/components/modbus.html) einrichten beschreibt ESPHome.
 
 Für ESPHome 2026.8 oder neuer.
 
 [English](README.md)
-
-| Du willst | Komponente |
-|---|---|
-| Keine Pins. Eine Komponente nutzt diese Id als `uart_id`. | [`tcp_uart`](#tcp_uart) |
-| Die Pins bleiben eine echte UART. Die Bytes gehen auf TCP. | [`uart_tcp`](#uart_tcp) |
-
-Die Bytes bleiben unverändert, außer `protocol` ist `modbus`. Eine [externe Komponente laden](https://esphome.io/components/external_components.html), eine [UART einrichten](https://esphome.io/components/uart.html) und den [Modbus-Hub](https://esphome.io/components/modbus.html) anhängen beschreibt ESPHome.
 
 ```yaml
 external_components:
@@ -32,131 +30,162 @@ external_components:
 
 ## tcp_uart
 
-Ersetzt eine UART. Keine Pins. Die Id wird einer anderen Komponente als `uart_id` gegeben. Ein Eintrag ist ein Socket: er wählt oder er lauscht.
+Diese Komponente ermöglicht es, eine TCP-Verbindung als UART zu verwenden. Es gibt keine Pins. Jede Komponente mit einer `uart_id` kann die Id nutzen. Ein Eintrag öffnet einen Socket.
 
-### `tcp_uart` Client
+> [!NOTE]
+> Es gibt keine `baud_rate`. Die Verbindung ist ein TCP-Socket, keine serielle Leitung.
 
-Dieses Gerät baut die Verbindung auf. `host` ist Pflicht. `role` ist standardmäßig `client` und kann wegbleiben.
+### tcp_uart client
+
+Das Gerät verbindet sich mit einem Host. `host` ist Pflicht. `role` ist standardmäßig `client`.
 
 ```yaml
+# Example configuration entry
 tcp_uart:
   - id: remote_serial
     host: 192.0.2.20
     port: 5000
+
+modbus:
+  - id: modbus_bus
+    uart_id: remote_serial
 ```
 
-| Schlüssel | Standard | Bedeutung |
-|---|---|---|
-| `host` | — | Pflicht. |
-| `port` | — | Pflicht. Port auf diesem Host. |
-| `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
-| `reconnect_interval` | 5s | Pause nach Fehlwahl oder Abbruch. |
-| `stall_timeout` | 0s | Nur Client. Nach dieser Stille neu wählen. `0s` lässt den Socket stehen. |
-| `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
-| `disconnects` | — | Optional. Wie oft die TCP-Verbindung seit dem Start abbrach. |
-| `address` | — | Optional. Textsensor. `ip:port` der Gegenseite, zum Beispiel `192.0.2.20:5000`. Ein Client zeigt den Host, den er anwählt. Ein Server bleibt leer, bis ein Client verbunden ist. |
+#### Konfigurationsvariablen
 
-### `tcp_uart` Server
+- **id** (*Optional*, [ID](https://esphome.io/guides/configuration-types#id)): Die Id für die Code-Erzeugung.
+- **host** (**Pflicht**, string): Der Host, zu dem verbunden wird. Eine IPv4-Adresse. Auf dem ESP32 kann auch ein Hostname verwendet werden.
+- **port** (**Pflicht**, int): Der TCP-Port, zu dem verbunden wird.
+- **protocol** (*Optional*, string): `raw` oder `modbus`. Standard ist `raw`.
+- **reconnect_interval** (*Optional*, [Zeit](https://esphome.io/guides/configuration-types#time)): Wartezeit, bevor nach einem Fehler oder Abbruch erneut verbunden wird. Standard ist `5s`.
+- **stall_timeout** (*Optional*, [Zeit](https://esphome.io/guides/configuration-types#time)): Socket schließen und erneut verbinden, wenn so lange keine Bytes kamen. Standard ist `0s`. Dann bleibt der Socket offen.
+- **connected** (*Optional*): Ein [binärer Sensor](https://esphome.io/components/binary_sensor.html), der meldet, ob die TCP-Verbindung steht.
+- **disconnects** (*Optional*): Ein [Sensor](https://esphome.io/components/sensor.html), der zählt, wie oft die TCP-Verbindung seit dem Start abbrach.
+- **address** (*Optional*): Ein [Textsensor](https://esphome.io/components/text_sensor.html), der `ip:port` der Gegenseite meldet, zum Beispiel `192.0.2.20:5000`.
 
-Ein anderes Gerät baut die Verbindung auf. `host` nicht setzen. `role: server` ist Pflicht. Gleichzeitig nur ein Client.
+### tcp_uart server
+
+Das Gerät lauscht. `host` nicht setzen. `role: server` ist Pflicht. Gleichzeitig ist nur ein Client verbunden.
 
 ```yaml
+# Example configuration entry
 tcp_uart:
   - id: local_serial
     role: server
     port: 5000
 ```
 
-| Schlüssel | Standard | Bedeutung |
-|---|---|---|
-| `role` | — | Pflicht. Setze `server`. |
-| `port` | — | Pflicht. Port auf diesem Gerät. |
-| `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
-| `reconnect_interval` | 5s | Pause nach fehlgeschlagenem Lauschen oder Abbruch. |
-| `idle_timeout` | 0s | Nur Server. Trennt eine Gegenstelle nach dieser Stille. `0s` lässt sie stehen. |
-| `allowed_hosts` | — | Nur Server. IP-Adressen, die verbinden dürfen. Leer lässt alle zu. |
-| `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
-| `disconnects` | — | Optional. Wie oft die TCP-Verbindung seit dem Start abbrach. |
-| `address` | — | Optional. Textsensor. `ip:port` der Gegenseite, zum Beispiel `192.0.2.20:5000`. Ein Client zeigt den Host, den er anwählt. Ein Server bleibt leer, bis ein Client verbunden ist. |
+#### Konfigurationsvariablen
+
+- **id** (*Optional*, [ID](https://esphome.io/guides/configuration-types#id)): Die Id für die Code-Erzeugung.
+- **role** (**Pflicht**, string): `server` setzen.
+- **port** (**Pflicht**, int): Der TCP-Port, auf dem gelauscht wird.
+- **protocol** (*Optional*, string): `raw` oder `modbus`. Standard ist `raw`.
+- **reconnect_interval** (*Optional*, [Zeit](https://esphome.io/guides/configuration-types#time)): Wartezeit, bevor nach einem Fehler erneut gelauscht wird. Standard ist `5s`.
+- **idle_timeout** (*Optional*, [Zeit](https://esphome.io/guides/configuration-types#time)): Einen Client trennen, der so lange stumm war. Standard ist `0s`. Dann bleibt die Verbindung offen.
+- **allowed_hosts** (*Optional*, Liste): IP-Adressen, die verbinden dürfen. Ohne diese Option darf jede Adresse verbinden.
+- **connected** (*Optional*): Ein [binärer Sensor](https://esphome.io/components/binary_sensor.html), der meldet, ob die TCP-Verbindung steht.
+- **disconnects** (*Optional*): Ein [Sensor](https://esphome.io/components/sensor.html), der zählt, wie oft die TCP-Verbindung seit dem Start abbrach.
+- **address** (*Optional*): Ein [Textsensor](https://esphome.io/components/text_sensor.html), der `ip:port` des verbundenen Clients meldet. Leer, bis ein Client verbunden ist. Der Port ist der Port, auf dem dieses Gerät lauscht.
 
 ## uart_tcp
 
-Kopiert Bytes zwischen einer Hardware-UART und einem TCP-Socket. Die Pins sind eine [UART](https://esphome.io/components/uart.html). Ein Eintrag ist ein Socket: er wählt oder er lauscht.
+Diese Komponente überträgt Bytes zwischen einer Hardware-[UART](https://esphome.io/components/uart.html) und einem TCP-Socket. Die Daten werden in beide Richtungen unverändert kopiert. Ein Eintrag öffnet einen Socket.
 
-### `uart_tcp` Client
+> [!NOTE]
+> Baudrate, Datenbits, Parität und Stoppbits stehen an der UART. Sie sind keine Optionen dieser Komponente. `rx_buffer_size` beschreibt die [UART](https://esphome.io/components/uart.html).
 
-Dieses Gerät baut die Verbindung auf. `role: client` ist Pflicht, weil diese Komponente sonst lauscht. `host` ist Pflicht.
+### uart_tcp client
+
+Das Gerät verbindet sich mit einem Host. `role: client` ist Pflicht, weil die Komponente sonst lauscht. `host` ist Pflicht.
 
 ```yaml
+# Example configuration entry
+uart:
+  - id: uart_bus
+    tx_pin: GPIO17
+    rx_pin: GPIO16
+    baud_rate: 9600
+
 uart_tcp:
-  - uart_id: bus
+  - id: uart_tcp_1
+    uart_id: uart_bus
     role: client
     host: 192.0.2.20
     port: 5000
 ```
 
-| Schlüssel | Standard | Bedeutung |
-|---|---|---|
-| `uart_id` | — | Pflicht. Die Hardware-UART. |
-| `role` | — | Pflicht. Setze `client`. |
-| `host` | — | Pflicht. |
-| `port` | — | Pflicht. Port auf diesem Host. |
-| `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
-| `reconnect_interval` | 5s | Pause nach Fehlwahl oder Abbruch. |
-| `stall_timeout` | 0s | Nur Client. Nach dieser Stille neu wählen. `0s` lässt den Socket stehen. |
-| `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
-| `disconnects` | — | Optional. Wie oft die TCP-Verbindung seit dem Start abbrach. |
-| `address` | — | Optional. Textsensor. `ip:port` der Gegenseite, zum Beispiel `192.0.2.20:5000`. Ein Client zeigt den Host, den er anwählt. Ein Server bleibt leer, bis ein Client verbunden ist. |
-| `response_timeout` | 300ms | Nur bei `protocol: modbus`. |
+#### Konfigurationsvariablen
 
-### `uart_tcp` Server
+- **id** (*Optional*, [ID](https://esphome.io/guides/configuration-types#id)): Die Id für die Code-Erzeugung.
+- **uart_id** (**Pflicht**, [ID](https://esphome.io/guides/configuration-types#id)): Die UART, die verwendet wird.
+- **role** (**Pflicht**, string): `client` setzen.
+- **host** (**Pflicht**, string): Der Host, zu dem verbunden wird. Eine IPv4-Adresse. Auf dem ESP32 kann auch ein Hostname verwendet werden.
+- **port** (**Pflicht**, int): Der TCP-Port, zu dem verbunden wird.
+- **protocol** (*Optional*, string): `raw` oder `modbus`. Standard ist `raw`.
+- **reconnect_interval** (*Optional*, [Zeit](https://esphome.io/guides/configuration-types#time)): Wartezeit, bevor nach einem Fehler oder Abbruch erneut verbunden wird. Standard ist `5s`.
+- **stall_timeout** (*Optional*, [Zeit](https://esphome.io/guides/configuration-types#time)): Socket schließen und erneut verbinden, wenn so lange keine Bytes kamen. Standard ist `0s`. Dann bleibt der Socket offen.
+- **response_timeout** (*Optional*, [Zeit](https://esphome.io/guides/configuration-types#time)): Wie lange bei `protocol: modbus` auf die Antwort der UART gewartet wird. Standard ist `300ms`.
+- **connected** (*Optional*): Ein [binärer Sensor](https://esphome.io/components/binary_sensor.html), der meldet, ob die TCP-Verbindung steht.
+- **disconnects** (*Optional*): Ein [Sensor](https://esphome.io/components/sensor.html), der zählt, wie oft die TCP-Verbindung seit dem Start abbrach.
+- **address** (*Optional*): Ein [Textsensor](https://esphome.io/components/text_sensor.html), der `ip:port` der Gegenseite meldet, zum Beispiel `192.0.2.20:5000`.
 
-Ein anderes Gerät baut die Verbindung auf. `host` nicht setzen. `role` ist standardmäßig `server` und kann wegbleiben. Gleichzeitig nur ein Client.
+### uart_tcp server
+
+Das Gerät lauscht. `host` nicht setzen. `role` ist standardmäßig `server`. Gleichzeitig ist nur ein Client verbunden.
 
 ```yaml
+# Example configuration entry
+uart:
+  - id: uart_bus
+    tx_pin: GPIO17
+    rx_pin: GPIO16
+    baud_rate: 9600
+
 uart_tcp:
-  - uart_id: bus
+  - id: uart_tcp_1
+    uart_id: uart_bus
     port: 5000
 ```
 
-| Schlüssel | Standard | Bedeutung |
-|---|---|---|
-| `uart_id` | — | Pflicht. Die Hardware-UART. |
-| `port` | — | Pflicht. Port auf diesem Gerät. |
-| `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
-| `reconnect_interval` | 5s | Pause nach fehlgeschlagenem Lauschen oder Abbruch. |
-| `idle_timeout` | 0s | Nur Server. Trennt eine Gegenstelle nach dieser Stille. `0s` lässt sie stehen. |
-| `allowed_hosts` | — | Nur Server. IP-Adressen, die verbinden dürfen. Leer lässt alle zu. |
-| `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
-| `disconnects` | — | Optional. Wie oft die TCP-Verbindung seit dem Start abbrach. |
-| `address` | — | Optional. Textsensor. `ip:port` der Gegenseite, zum Beispiel `192.0.2.20:5000`. Ein Client zeigt den Host, den er anwählt. Ein Server bleibt leer, bis ein Client verbunden ist. |
-| `response_timeout` | 300ms | Nur bei `protocol: modbus`. |
-| `tap_port` | — | Zweiter Port. Verbindungen dort hören beide Richtungen und können nicht senden. |
+#### Konfigurationsvariablen
 
-`rx_buffer_size` an der Hardware-`uart:` ist der Puffer der Pins. Die [UART](https://esphome.io/components/uart.html) beschreibt ihn. Diese Komponenten haben keinen zweiten. Modbus-Telegramme sind kurz, der Standard reicht.
+- **id** (*Optional*, [ID](https://esphome.io/guides/configuration-types#id)): Die Id für die Code-Erzeugung.
+- **uart_id** (**Pflicht**, [ID](https://esphome.io/guides/configuration-types#id)): Die UART, die verwendet wird.
+- **port** (**Pflicht**, int): Der TCP-Port, auf dem gelauscht wird.
+- **protocol** (*Optional*, string): `raw` oder `modbus`. Standard ist `raw`.
+- **reconnect_interval** (*Optional*, [Zeit](https://esphome.io/guides/configuration-types#time)): Wartezeit, bevor nach einem Fehler erneut gelauscht wird. Standard ist `5s`.
+- **idle_timeout** (*Optional*, [Zeit](https://esphome.io/guides/configuration-types#time)): Einen Client trennen, der so lange stumm war. Standard ist `0s`. Dann bleibt die Verbindung offen.
+- **allowed_hosts** (*Optional*, Liste): IP-Adressen, die verbinden dürfen. Ohne diese Option darf jede Adresse verbinden.
+- **response_timeout** (*Optional*, [Zeit](https://esphome.io/guides/configuration-types#time)): Wie lange bei `protocol: modbus` auf die Antwort der UART gewartet wird. Standard ist `300ms`.
+- **tap_port** (*Optional*, int): Ein zweiter Port. Verbindungen dort empfangen beide Richtungen und können nicht senden.
+- **connected** (*Optional*): Ein [binärer Sensor](https://esphome.io/components/binary_sensor.html), der meldet, ob die TCP-Verbindung steht.
+- **disconnects** (*Optional*): Ein [Sensor](https://esphome.io/components/sensor.html), der zählt, wie oft die TCP-Verbindung seit dem Start abbrach.
+- **address** (*Optional*): Ein [Textsensor](https://esphome.io/components/text_sensor.html), der `ip:port` des verbundenen Clients meldet. Leer, bis ein Client verbunden ist.
 
 ### Pins teilen
 
-Nur `uart_tcp` mit `protocol: modbus` und lauschender Rolle. Die Id ist die `uart_id` des lokalen Modbus-Hubs. Die Komponente besitzt die Pins. Der lokale Controller und ein TCP-Client geben ihr je ein Telegramm. Sie sendet immer nur eines, das lokale zuerst, und gibt die Antwort nur an den Absender zurück.
+Mit `protocol: modbus` und `role: server` die Id als `uart_id` eines lokalen Modbus-Hubs verwenden. Die Komponente nutzt die Pins. Der lokale Controller und ein TCP-Client senden je ein Telegramm. Es wird immer nur eines gesendet, das lokale zuerst, und die Antwort geht nur an den Absender zurück.
 
 ```yaml
+# Example configuration entry
 uart_tcp:
   - id: gate
-    uart_id: bus
+    uart_id: uart_bus
     port: 502
     protocol: modbus
-    tap_port: 1503
 
 modbus:
-  - uart_id: gate
-    id: local_bus
+  - id: local_bus
+    uart_id: gate
 ```
 
 ## Beide Rollen
 
-Zwei Einträge, einer wählt, einer lauscht. Jeder hat eine eigene Id und einen eigenen Port.
+Zum Verbinden und zum Lauschen zwei Einträge anlegen. Jeder Eintrag hat eine eigene Id und einen eigenen Port.
 
 ```yaml
+# Example configuration entry
 tcp_uart:
   - id: remote_serial
     host: 192.0.2.20
@@ -166,4 +195,4 @@ tcp_uart:
     port: 5001
 ```
 
-`uart_tcp` funktioniert gleich: zwei Einträge unter `uart_tcp:`, jeder mit eigener `uart_id`.
+`uart_tcp` funktioniert genauso: zwei Einträge unter `uart_tcp:`, jeder mit eigener `uart_id`.
