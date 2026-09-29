@@ -1,6 +1,8 @@
 # esphome-tcp-uart
 
-Zwei Wege, eine UART auf TCP zu legen. ESPHome 2026.8 oder neuer. Lizenz: MIT.
+ESPHome bietet eine UART nur an Pins. Diese Komponenten verbinden diese UART mit einem TCP-Socket, in beide Richtungen. Eine Komponente, die schon `uart_id` nimmt, funktioniert weiter, wenn die Gegenseite im Netz liegt. Ein Gerät an den Pins ist vom Netz aus erreichbar.
+
+Für ESPHome 2026.8 oder neuer.
 
 [English](README.md)
 
