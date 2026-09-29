@@ -1,13 +1,14 @@
 # esphome-modbus-tcp-uart
 
-Zwei TCP-Leitungen, die für ESPHome wie eine UART aussehen. ESPHome 2026.8 oder neuer. Lizenz: MIT.
+Drei TCP-Brücken für ESPHome 2026.8 oder neuer. Lizenz: MIT.
 
 [English](README.md)
 
-| Komponente | Bytes auf dem Socket |
+| Komponente | Was sie tut |
 |---|---|
-| `modbus_tcp_uart` | Modbus-TCP (MBAP). Auf der UART-Seite RTU. |
-| `tcp_uart` | Dieselben Bytes, nichts dazwischen. Ersetzt eine UART. Leitet keine Pins weiter. |
+| `modbus_tcp_uart` | Modbus-TCP (MBAP) auf dem Socket, Modbus-RTU Richtung ESPHome. Keine Pins. |
+| `tcp_uart` | Rohe Bytes. Ersetzt eine UART für eine Komponente mit `uart_id`. Keine Pins. |
+| `uart_tcp` | Hardware-UART auf TCP. `raw` kopiert Bytes. `modbus` wandelt RTU und MBAP. |
 
 Keine der beiden ist eine Sensor-Plattform. Ein Sensor bleibt `platform: modbus_controller` aus ESPHome. Diese Komponenten ersetzen nur die UART, die der `modbus:`-Hub liest.
 
@@ -88,7 +89,47 @@ tcp_uart:
     baud_rate: 9600
 ```
 
-Ein Gateway, das eine Hardware-`uart:` auf TCP legt, ist diese Komponente nicht. Dafür brauchte es eine echte `baud_rate` an den Pins und einen eigenen TCP-`port`.
+Ein Gateway, das eine Hardware-`uart:` auf TCP legt, ist `uart_tcp` weiter unten. `tcp_uart` tut das nicht, deshalb taktet seine `baud_rate` keinen Pin.
+
+## uart_tcp
+
+Kopiert Bytes zwischen einer echten UART und einem TCP-Socket. Baud, Datenbits, Parität und Stoppbits stehen an diesem `uart:`-Eintrag. Sie takten die Pins. `port` ist der TCP-Port. Bei `role: server` ist gleichzeitig nur ein TCP-Client verbunden.
+
+`protocol: raw` kopiert Bytes unverändert. Ein Modbus-RTU-Gerät liegt dann auf TCP als RTU, ohne MBAP-Kopf.
+
+`protocol: modbus` spricht auf dem Socket Modbus-TCP und an den Pins Modbus-RTU. `role: server` nimmt einen TCP-Master an und fragt den Bus. `role: client` wählt einen TCP-Slave und reicht RTU-Anfragen eines Masters an den Pins weiter.
+
+```yaml
+external_components:
+  - source: github://Bascht74/esphome-modbus-tcp-uart
+    components: [uart_tcp]
+
+uart:
+  - id: bus
+    tx_pin: GPIO17
+    rx_pin: GPIO16
+    baud_rate: 9600
+    data_bits: 8
+    parity: NONE
+    stop_bits: 1
+
+uart_tcp:
+  - uart_id: bus
+    role: server
+    port: 502
+    protocol: modbus
+    response_timeout: 300ms
+```
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `uart_id` | — | Hardware-UART. Baud und Rahmen stehen dort. |
+| `port` | — | Pflicht, TCP-Port. |
+| `role` | `server` | `server` lauscht. `client` wählt `host`. |
+| `protocol` | `raw` | `raw` kopiert Bytes. `modbus` wandelt MBAP und RTU. |
+| `host` | — | Pflicht für Client, verboten für Server. |
+| `reconnect_interval` | 5s | Pause nach Fehlwahl, Abbruch oder fehlgeschlagenem Lauschen. |
+| `response_timeout` | 300ms | Nur bei `protocol: modbus`. |
 
 ## Wo die Baudrate wirkt
 
@@ -97,7 +138,7 @@ Ein Gateway, das eine Hardware-`uart:` auf TCP legt, ist diese Komponente nicht.
 - Pause zwischen Frames = 3,5 Zeichenzeiten, bei 9600 etwa 4 ms
 - geschätzte Sendezeit = Framelänge × Bits je Zeichen / Baud
 
-Beides sind Timer im Hub. Sie ändern den TCP-Strom nicht. Ein echter Bus setzt `baud_rate` an seinem eigenen `uart:`-Eintrag. `tcp_uart` speichert `baud_rate` für dieselbe Art von Prüfung und nutzt sie nicht als Takt.
+Beides sind Timer im Hub. Sie ändern den TCP-Strom nicht. Ein echter Bus setzt `baud_rate` an seinem eigenen `uart:`-Eintrag. `tcp_uart` speichert `baud_rate` für dieselbe Art von Prüfung und nutzt sie nicht als Takt. `uart_tcp` nutzt die Baudrate seiner Hardware-UART sowohl zum Takten der Pins als auch, bei `protocol: modbus`, als Pause von 3,5 Zeichen zwischen RTU-Frames.
 
 ## Kompatibilität
 

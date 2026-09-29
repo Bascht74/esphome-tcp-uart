@@ -1,13 +1,14 @@
 # esphome-modbus-tcp-uart
 
-Two UART-shaped TCP pipes for ESPHome 2026.8 or newer. License: MIT.
+Three TCP bridges for ESPHome 2026.8 or newer. License: MIT.
 
 [Deutsche Fassung](README.de.md)
 
-| Component | Bytes on the socket |
+| Component | What it does |
 |---|---|
-| `modbus_tcp_uart` | Modbus TCP (MBAP). RTU on the UART side. |
-| `tcp_uart` | The same bytes, nothing added or removed. Replaces a UART. Does not forward pins. |
+| `modbus_tcp_uart` | Modbus TCP (MBAP) on the socket, Modbus RTU toward ESPHome. No pins. |
+| `tcp_uart` | Raw bytes. Replaces a UART for a component with `uart_id`. No pins. |
+| `uart_tcp` | Hardware UART pins to TCP. `raw` copies bytes. `modbus` converts RTU and MBAP. |
 
 Neither component is a sensor platform. A sensor still uses `platform: modbus_controller` from ESPHome. These components only replace the UART the `modbus:` hub reads.
 
@@ -88,7 +89,47 @@ tcp_uart:
     baud_rate: 9600
 ```
 
-A gateway that takes a hardware `uart:` and publishes it on TCP is not this component. That would need a real `baud_rate` on those pins and a separate TCP `port`.
+A gateway that takes a hardware `uart:` and publishes it on TCP is `uart_tcp` below. `tcp_uart` does not do that, so its `baud_rate` never clocks a pin.
+
+## uart_tcp
+
+Copies bytes between a real UART and one TCP socket. Baud, data bits, parity, and stop bits belong on that `uart:` entry. They clock the pins. `port` is the TCP port. One TCP client at a time in `role: server`.
+
+`protocol: raw` copies bytes unchanged. A Modbus RTU device then appears on TCP as RTU, without an MBAP header.
+
+`protocol: modbus` speaks Modbus TCP on the socket and Modbus RTU on the pins. `role: server` accepts a TCP master and queries the bus. `role: client` dials a TCP slave and forwards RTU requests from a master on the pins.
+
+```yaml
+external_components:
+  - source: github://Bascht74/esphome-modbus-tcp-uart
+    components: [uart_tcp]
+
+uart:
+  - id: bus
+    tx_pin: GPIO17
+    rx_pin: GPIO16
+    baud_rate: 9600
+    data_bits: 8
+    parity: NONE
+    stop_bits: 1
+
+uart_tcp:
+  - uart_id: bus
+    role: server
+    port: 502
+    protocol: modbus
+    response_timeout: 300ms
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `uart_id` | — | Hardware UART. Baud and framing are set there. |
+| `port` | — | Required TCP port. |
+| `role` | `server` | `server` listens. `client` dials `host`. |
+| `protocol` | `raw` | `raw` copies bytes. `modbus` converts MBAP and RTU. |
+| `host` | — | Required for a client, forbidden for a server. |
+| `reconnect_interval` | 5s | Delay after a failed dial, a dead link, or a failed listen. |
+| `response_timeout` | 300ms | Used only for `protocol: modbus`. |
 
 ## Where baud rate matters
 
@@ -97,7 +138,7 @@ A gateway that takes a hardware `uart:` and publishes it on TCP is not this comp
 - inter-frame gap = 3.5 character times, about 4 ms at 9600
 - estimated transmit time = frame length × bits per character / baud
 
-Both are timers inside the hub. They do not change the TCP stream. A real bus sets its own `baud_rate` on its own `uart:` entry. `tcp_uart` stores `baud_rate` for the same kind of check and does not use it as a clock.
+Both are timers inside the hub. They do not change the TCP stream. A real bus sets its own `baud_rate` on its own `uart:` entry. `tcp_uart` stores `baud_rate` for the same kind of check and does not use it as a clock. `uart_tcp` uses the baud of its hardware UART both to clock the pins and, in `protocol: modbus`, as the 3.5-character gap between RTU frames.
 
 ## Compatibility
 
