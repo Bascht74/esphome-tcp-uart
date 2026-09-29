@@ -7,7 +7,7 @@ Dieses Repository fügt zwei Komponenten hinzu, die eine [UART](https://esphome.
 
 Die Bytes werden unverändert kopiert. `protocol: modbus` setzen, wenn die Gegenseite Modbus-TCP spricht. Eine [externe Komponente laden](https://esphome.io/components/external_components.html) und [Modbus](https://esphome.io/components/modbus.html) einrichten beschreibt ESPHome.
 
-Für ESPHome 2026.8 oder neuer.
+Für ESPHome 2026.10 oder neuer.
 
 [English](README.md)
 
