@@ -3,6 +3,7 @@
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 
+#include <cinttypes>
 #include <cerrno>
 #include <cstring>
 
@@ -44,7 +45,7 @@ void UartTcp::dump_config() {
   } else {
     ESP_LOGCONFIG(TAG, "  Host: %s:%u", this->host_.c_str(), this->port_);
   }
-  ESP_LOGCONFIG(TAG, "  UART baud: %u", this->parent_->get_baud_rate());
+  ESP_LOGCONFIG(TAG, "  UART baud: %" PRIu32, this->parent_->get_baud_rate());
 }
 
 void UartTcp::on_shutdown() {
