@@ -4,66 +4,106 @@ Two ways to put a UART on TCP, for ESPHome 2026.8 or newer. License: MIT.
 
 [Deutsche Fassung](README.de.md)
 
-| Component | Direction |
+| You want | Component |
 |---|---|
-| `tcp_uart` | A component with `uart_id` talks to a TCP socket. No pins. |
-| `uart_tcp` | The pins are a real UART. The other end is a TCP socket. |
+| No pins. A component uses this id as `uart_id`. | `tcp_uart` |
+| Pins stay a real UART. Bytes are copied to TCP. | `uart_tcp` |
 
-Bytes are unchanged unless `protocol` is `modbus`. How to [load an external component](https://esphome.io/components/external_components.html), how a [UART](https://esphome.io/components/uart.html) is set up, and how the [Modbus hub](https://esphome.io/components/modbus.html) uses `uart_id` is documented by ESPHome.
+Bytes are unchanged unless `protocol` is `modbus`. Loading an [external component](https://esphome.io/components/external_components.html), setting up a [UART](https://esphome.io/components/uart.html), and attaching the [Modbus hub](https://esphome.io/components/modbus.html) are documented by ESPHome.
 
 ```yaml
 external_components:
   - source: github://Bascht74/esphome-tcp-uart
-    components: [tcp_uart]
+    components: [tcp_uart, uart_tcp]
 ```
 
-## tcp_uart
+Pick Client or Server. Do not mix the two in one entry.
 
-Replaces a UART. The peer must already speak TCP. No pins, no line levels. One entry is a client or a server.
+## Client
+
+This device opens the TCP connection. `host` is required.
+
+### No pins
+
+`role` defaults to `client` and can be left out. Pass the id to a component as `uart_id`. The socket is not a pin and has no line level. `baud_rate` is stored so the component can read it. It is not sent.
 
 ```yaml
 tcp_uart:
   - id: remote_serial
+    host: 192.0.2.20
+    port: 5000
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `host` | — | Required. |
+| `port` | — | Required. Port on that host. |
+| `protocol` | `raw` | `modbus` if the peer speaks Modbus TCP. |
+| `baud_rate` | 9600 | Not on the wire. |
+| `reconnect_interval` | 5s | Pause after a failed dial or a dropped link. |
+
+### Pins
+
+`role: client` is required here, because this component listens unless told otherwise. Pins and baud stay on the [`uart:`](https://esphome.io/components/uart.html) entry.
+
+```yaml
+uart_tcp:
+  - uart_id: bus
     role: client
     host: 192.0.2.20
     port: 5000
 ```
 
-Pass `remote_serial` as `uart_id`. `role: server` uses the same keys and forbids `host`. One TCP client at a time.
+| Key | Default | Meaning |
+|---|---|---|
+| `uart_id` | — | Required. The hardware UART. |
+| `role` | — | Required. Set `client`. |
+| `host` | — | Required. |
+| `port` | — | Required. Port on that host. |
+| `protocol` | `raw` | `modbus` if the peer speaks Modbus TCP. |
+| `reconnect_interval` | 5s | Pause after a failed dial or a dropped link. |
+| `response_timeout` | 300ms | Only for `protocol: modbus`. |
+
+## Server
+
+Another device opens the TCP connection. Do not set `host`. One client at a time.
+
+### No pins
+
+```yaml
+tcp_uart:
+  - id: local_serial
+    role: server
+    port: 5000
+```
+
+Pass `local_serial` as `uart_id`. `baud_rate` is stored and is not sent.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `role` | `client` | `client` dials `host`. `server` listens. |
-| `host` | — | Required for a client, forbidden for a server. |
-| `port` | — | Required. Remote port, or the local listen port. |
-| `protocol` | `raw` | `raw` copies bytes. `modbus` wraps them for a Modbus TCP peer. |
-| `baud_rate` | 9600 | Stored only, so a component can read it. Not sent, and it clocks no pin. |
-| `reconnect_interval` | 5s | Pause after a failed dial, a dropped link, or a failed listen. |
+| `role` | — | Required. Set `server`. |
+| `port` | — | Required. Port on this device. |
+| `protocol` | `raw` | `modbus` if the peer speaks Modbus TCP. |
+| `baud_rate` | 9600 | Not on the wire. |
+| `reconnect_interval` | 5s | Pause after a failed listen or a dropped link. |
 
-## uart_tcp
+### Pins
 
-Copies bytes between one hardware UART and one TCP socket. Pins and baud belong on the [`uart:`](https://esphome.io/components/uart.html) entry this component points at. `role: server` accepts one client. A client is the same entry plus `host`.
+`role` defaults to `server` and can be left out. Pins and baud stay on the [`uart:`](https://esphome.io/components/uart.html) entry.
 
 ```yaml
 uart_tcp:
   - uart_id: bus
-    role: server
     port: 5000
 ```
 
 | Key | Default | Meaning |
 |---|---|---|
-| `uart_id` | — | The hardware UART. |
-| `port` | — | Required TCP port. |
-| `role` | `server` | `server` listens. `client` dials `host`. |
-| `protocol` | `raw` | `raw` copies bytes. `modbus` wraps them for a Modbus TCP peer. |
-| `host` | — | Required for a client, forbidden for a server. |
-| `reconnect_interval` | 5s | Pause after a failed dial, a dropped link, or a failed listen. |
-| `response_timeout` | 300ms | Used only with `protocol: modbus`. |
-
-## Baud rate
-
-The socket has no baud rate. `tcp_uart` does not clock bits. `uart_tcp` uses the baud of its hardware UART for the pins.
+| `uart_id` | — | Required. The hardware UART. |
+| `port` | — | Required. Port on this device. |
+| `protocol` | `raw` | `modbus` if the peer speaks Modbus TCP. |
+| `reconnect_interval` | 5s | Pause after a failed listen or a dropped link. |
+| `response_timeout` | 300ms | Only for `protocol: modbus`. |
 
 ## Tests
 
