@@ -116,7 +116,7 @@ uart_tcp:
 
 ## Beide Rollen
 
-Ein Eintrag kann nicht gleichzeitig wählen und lauschen. Ein zweiter Eintrag kann das. Jeder Eintrag hat eine eigene Id und einen eigenen Port.
+Zwei Einträge, einer wählt, einer lauscht. Jeder hat eine eigene Id und einen eigenen Port.
 
 ```yaml
 tcp_uart:

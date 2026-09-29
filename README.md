@@ -116,7 +116,7 @@ uart_tcp:
 
 ## Both roles
 
-One entry cannot dial and listen at the same time. A second entry can. Each entry has its own id and its own port.
+Use two entries to dial and to listen. Each one has its own id and its own port.
 
 ```yaml
 tcp_uart:
