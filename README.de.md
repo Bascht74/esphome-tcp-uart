@@ -6,8 +6,8 @@ Zwei Wege, eine UART auf TCP zu legen. ESPHome 2026.8 oder neuer. Lizenz: MIT.
 
 | Du willst | Komponente |
 |---|---|
-| Keine Pins. Eine Komponente nutzt diese Id als `uart_id`. | `tcp_uart` |
-| Die Pins bleiben eine echte UART. Die Bytes gehen auf TCP. | `uart_tcp` |
+| Keine Pins. Eine Komponente nutzt diese Id als `uart_id`. | [`tcp_uart`](#tcp_uart) |
+| Die Pins bleiben eine echte UART. Die Bytes gehen auf TCP. | [`uart_tcp`](#uart_tcp) |
 
 Die Bytes bleiben unverändert, außer `protocol` ist `modbus`. Eine [externe Komponente laden](https://esphome.io/components/external_components.html), eine [UART einrichten](https://esphome.io/components/uart.html) und den [Modbus-Hub](https://esphome.io/components/modbus.html) anhängen beschreibt ESPHome.
 
@@ -17,15 +17,24 @@ external_components:
     components: [tcp_uart, uart_tcp]
 ```
 
-Ein Eintrag ist Client oder Server. Wer beides braucht, schreibt einen zweiten Eintrag.
+## Inhalt
 
-## Client
+- [`tcp_uart`](#tcp_uart)
+  - [Client](#tcp_uart-client)
+  - [Server](#tcp_uart-server)
+- [`uart_tcp`](#uart_tcp)
+  - [Client](#uart_tcp-client)
+  - [Server](#uart_tcp-server)
+- [Beide Rollen](#beide-rollen)
+- [Tests](#tests)
 
-Dieses Gerät baut die TCP-Verbindung auf. `host` ist Pflicht.
+## tcp_uart
 
-### Ohne Pins
+Ersetzt eine UART. Keine Pins. Die Id wird einer anderen Komponente als `uart_id` gegeben. Ein Eintrag ist ein Socket: er wählt oder er lauscht.
 
-`role` ist standardmäßig `client` und kann wegbleiben. Die Id wird einer Komponente als `uart_id` gegeben.
+### `tcp_uart` Client
+
+Dieses Gerät baut die Verbindung auf. `host` ist Pflicht. `role` ist standardmäßig `client` und kann wegbleiben.
 
 ```yaml
 tcp_uart:
@@ -41,9 +50,31 @@ tcp_uart:
 | `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
 | `reconnect_interval` | 5s | Pause nach Fehlwahl oder Abbruch. |
 
-### Mit Pins
+### `tcp_uart` Server
 
-`role: client` ist hier Pflicht, weil diese Komponente sonst lauscht. Die Pins sind eine [UART](https://esphome.io/components/uart.html).
+Ein anderes Gerät baut die Verbindung auf. `host` nicht setzen. `role: server` ist Pflicht. Gleichzeitig nur ein Client.
+
+```yaml
+tcp_uart:
+  - id: local_serial
+    role: server
+    port: 5000
+```
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `role` | — | Pflicht. Setze `server`. |
+| `port` | — | Pflicht. Port auf diesem Gerät. |
+| `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
+| `reconnect_interval` | 5s | Pause nach fehlgeschlagenem Lauschen oder Abbruch. |
+
+## uart_tcp
+
+Kopiert Bytes zwischen einer Hardware-UART und einem TCP-Socket. Die Pins sind eine [UART](https://esphome.io/components/uart.html). Ein Eintrag ist ein Socket: er wählt oder er lauscht.
+
+### `uart_tcp` Client
+
+Dieses Gerät baut die Verbindung auf. `role: client` ist Pflicht, weil diese Komponente sonst lauscht. `host` ist Pflicht.
 
 ```yaml
 uart_tcp:
@@ -63,31 +94,9 @@ uart_tcp:
 | `reconnect_interval` | 5s | Pause nach Fehlwahl oder Abbruch. |
 | `response_timeout` | 300ms | Nur bei `protocol: modbus`. |
 
-## Server
+### `uart_tcp` Server
 
-Ein anderes Gerät baut die TCP-Verbindung auf. `host` nicht setzen. Gleichzeitig nur ein Client.
-
-### Ohne Pins
-
-```yaml
-tcp_uart:
-  - id: local_serial
-    role: server
-    port: 5000
-```
-
-`local_serial` wird als `uart_id` übergeben.
-
-| Schlüssel | Standard | Bedeutung |
-|---|---|---|
-| `role` | — | Pflicht. Setze `server`. |
-| `port` | — | Pflicht. Port auf diesem Gerät. |
-| `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
-| `reconnect_interval` | 5s | Pause nach fehlgeschlagenem Lauschen oder Abbruch. |
-
-### Mit Pins
-
-`role` ist standardmäßig `server` und kann wegbleiben. Die Pins sind eine [UART](https://esphome.io/components/uart.html).
+Ein anderes Gerät baut die Verbindung auf. `host` nicht setzen. `role` ist standardmäßig `server` und kann wegbleiben. Gleichzeitig nur ein Client.
 
 ```yaml
 uart_tcp:
@@ -102,6 +111,22 @@ uart_tcp:
 | `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
 | `reconnect_interval` | 5s | Pause nach fehlgeschlagenem Lauschen oder Abbruch. |
 | `response_timeout` | 300ms | Nur bei `protocol: modbus`. |
+
+## Beide Rollen
+
+Ein Eintrag kann nicht gleichzeitig wählen und lauschen. Ein zweiter Eintrag kann das. Jeder Eintrag hat eine eigene Id und einen eigenen Port.
+
+```yaml
+tcp_uart:
+  - id: remote_serial
+    host: 192.0.2.20
+    port: 5000
+  - id: local_serial
+    role: server
+    port: 5001
+```
+
+`uart_tcp` funktioniert gleich: zwei Einträge unter `uart_tcp:`, jeder mit eigener `uart_id`.
 
 ## Tests
 
