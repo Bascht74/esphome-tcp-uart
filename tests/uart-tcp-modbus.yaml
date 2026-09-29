@@ -37,3 +37,5 @@ uart_tcp:
     host: 192.0.2.30
     port: 5000
     protocol: raw
+    address:
+      name: Remote address

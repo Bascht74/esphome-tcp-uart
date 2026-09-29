@@ -54,6 +54,7 @@ tcp_uart:
 | `stall_timeout` | 0s | Client only. Close and dial again after this long with no bytes. `0s` leaves the socket up. |
 | `connected` | — | Optional. On while this TCP connection is up. |
 | `disconnects` | — | Optional. How often the TCP connection dropped since boot. |
+| `address` | — | Optional. Text sensor. `ip:port` of the other end, for example `192.0.2.20:5000`. A client shows the host it dials. A server is empty until a client connects. |
 
 ### `tcp_uart` server
 
@@ -76,6 +77,7 @@ tcp_uart:
 | `allowed_hosts` | — | Server only. IP addresses that may connect. Empty allows any. |
 | `connected` | — | Optional. On while this TCP connection is up. |
 | `disconnects` | — | Optional. How often the TCP connection dropped since boot. |
+| `address` | — | Optional. Text sensor. `ip:port` of the other end, for example `192.0.2.20:5000`. A client shows the host it dials. A server is empty until a client connects. |
 
 ## uart_tcp
 
@@ -104,6 +106,7 @@ uart_tcp:
 | `stall_timeout` | 0s | Client only. Close and dial again after this long with no bytes. `0s` leaves the socket up. |
 | `connected` | — | Optional. On while this TCP connection is up. |
 | `disconnects` | — | Optional. How often the TCP connection dropped since boot. |
+| `address` | — | Optional. Text sensor. `ip:port` of the other end, for example `192.0.2.20:5000`. A client shows the host it dials. A server is empty until a client connects. |
 | `response_timeout` | 300ms | Only for `protocol: modbus`. |
 
 ### `uart_tcp` server
@@ -126,6 +129,7 @@ uart_tcp:
 | `allowed_hosts` | — | Server only. IP addresses that may connect. Empty allows any. |
 | `connected` | — | Optional. On while this TCP connection is up. |
 | `disconnects` | — | Optional. How often the TCP connection dropped since boot. |
+| `address` | — | Optional. Text sensor. `ip:port` of the other end, for example `192.0.2.20:5000`. A client shows the host it dials. A server is empty until a client connects. |
 | `response_timeout` | 300ms | Only for `protocol: modbus`. |
 | `tap_port` | — | Second port. Connections there hear both directions and cannot send. |
 

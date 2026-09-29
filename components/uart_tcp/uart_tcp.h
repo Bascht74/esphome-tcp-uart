@@ -2,6 +2,7 @@
 
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/socket/socket.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/uart/uart_component.h"
@@ -38,6 +39,7 @@ class UartTcp : public Component, public uart::UARTDevice, public uart::UARTComp
   void set_modbus(bool modbus) { this->modbus_ = modbus; }
   void set_connected_sensor(binary_sensor::BinarySensor *sensor) { this->connected_sensor_ = sensor; }
   void set_drop_sensor(sensor::Sensor *sensor) { this->drop_sensor_ = sensor; }
+  void set_address_sensor(text_sensor::TextSensor *sensor) { this->address_sensor_ = sensor; }
   void add_allowed(const std::string &host);
 
   void setup() override;
@@ -78,6 +80,9 @@ class UartTcp : public Component, public uart::UARTDevice, public uart::UARTComp
   void pull_uart_();
   void set_link_up_(bool up);
   void publish_link_();
+  void publish_address_(const std::string &ip);
+  void clear_address_();
+  void publish_peer_(const struct sockaddr *addr);
   void note_drop_();
   void note_io_();
   void check_idle_();
@@ -124,6 +129,8 @@ class UartTcp : public Component, public uart::UARTDevice, public uart::UARTComp
   uint32_t last_local_us_{0};
   binary_sensor::BinarySensor *connected_sensor_{nullptr};
   sensor::Sensor *drop_sensor_{nullptr};
+  text_sensor::TextSensor *address_sensor_{nullptr};
+  std::string address_;
 
   std::atomic<bool> resolving_{false};
   std::atomic<bool> resolve_failed_{false};

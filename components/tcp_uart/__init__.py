@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, sensor, socket, uart
+from esphome.components import binary_sensor, sensor, socket, text_sensor, uart
 from esphome.const import (
     CONF_BAUD_RATE,
     CONF_ID,
@@ -11,7 +11,7 @@ from esphome.const import (
 )
 
 DEPENDENCIES = ["network", "socket"]
-AUTO_LOAD = ["uart", "binary_sensor", "sensor", "socket"]
+AUTO_LOAD = ["uart", "binary_sensor", "sensor", "text_sensor", "socket"]
 MULTI_CONF = True
 
 tcp_uart_ns = cg.esphome_ns.namespace("tcp_uart")
@@ -22,6 +22,7 @@ CONF_ROLE = "role"
 CONF_PROTOCOL = "protocol"
 CONF_RECONNECT_INTERVAL = "reconnect_interval"
 CONF_CONNECTED = "connected"
+CONF_ADDRESS = "address"
 CONF_STALL_TIMEOUT = "stall_timeout"
 CONF_IDLE_TIMEOUT = "idle_timeout"
 CONF_DISCONNECTS = "disconnects"
@@ -69,6 +70,10 @@ ITEM_SCHEMA = cv.All(
                 state_class=STATE_CLASS_TOTAL_INCREASING,
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
+            cv.Optional(CONF_ADDRESS): text_sensor.text_sensor_schema(
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                icon="mdi:ip-network",
+            ),
         }
     ).extend(cv.COMPONENT_SCHEMA),
     _validate,
@@ -97,6 +102,9 @@ async def to_code(config):
     if CONF_DISCONNECTS in config:
         drops = await sensor.new_sensor(config[CONF_DISCONNECTS])
         cg.add(var.set_drop_sensor(drops))
+    if CONF_ADDRESS in config:
+        address = await text_sensor.new_text_sensor(config[CONF_ADDRESS])
+        cg.add(var.set_address_sensor(address))
     cg.add(var.set_baud_rate(config[CONF_BAUD_RATE]))
     cg.add(var.set_data_bits(8))
     cg.add(var.set_stop_bits(1))

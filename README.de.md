@@ -54,6 +54,7 @@ tcp_uart:
 | `stall_timeout` | 0s | Nur Client. Nach dieser Stille neu wählen. `0s` lässt den Socket stehen. |
 | `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
 | `disconnects` | — | Optional. Wie oft die TCP-Verbindung seit dem Start abbrach. |
+| `address` | — | Optional. Textsensor. `ip:port` der Gegenseite, zum Beispiel `192.0.2.20:5000`. Ein Client zeigt den Host, den er anwählt. Ein Server bleibt leer, bis ein Client verbunden ist. |
 
 ### `tcp_uart` Server
 
@@ -76,6 +77,7 @@ tcp_uart:
 | `allowed_hosts` | — | Nur Server. IP-Adressen, die verbinden dürfen. Leer lässt alle zu. |
 | `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
 | `disconnects` | — | Optional. Wie oft die TCP-Verbindung seit dem Start abbrach. |
+| `address` | — | Optional. Textsensor. `ip:port` der Gegenseite, zum Beispiel `192.0.2.20:5000`. Ein Client zeigt den Host, den er anwählt. Ein Server bleibt leer, bis ein Client verbunden ist. |
 
 ## uart_tcp
 
@@ -104,6 +106,7 @@ uart_tcp:
 | `stall_timeout` | 0s | Nur Client. Nach dieser Stille neu wählen. `0s` lässt den Socket stehen. |
 | `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
 | `disconnects` | — | Optional. Wie oft die TCP-Verbindung seit dem Start abbrach. |
+| `address` | — | Optional. Textsensor. `ip:port` der Gegenseite, zum Beispiel `192.0.2.20:5000`. Ein Client zeigt den Host, den er anwählt. Ein Server bleibt leer, bis ein Client verbunden ist. |
 | `response_timeout` | 300ms | Nur bei `protocol: modbus`. |
 
 ### `uart_tcp` Server
@@ -126,6 +129,7 @@ uart_tcp:
 | `allowed_hosts` | — | Nur Server. IP-Adressen, die verbinden dürfen. Leer lässt alle zu. |
 | `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
 | `disconnects` | — | Optional. Wie oft die TCP-Verbindung seit dem Start abbrach. |
+| `address` | — | Optional. Textsensor. `ip:port` der Gegenseite, zum Beispiel `192.0.2.20:5000`. Ein Client zeigt den Host, den er anwählt. Ein Server bleibt leer, bis ein Client verbunden ist. |
 | `response_timeout` | 300ms | Nur bei `protocol: modbus`. |
 | `tap_port` | — | Zweiter Port. Verbindungen dort hören beide Richtungen und können nicht senden. |
 

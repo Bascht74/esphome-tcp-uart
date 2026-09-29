@@ -22,3 +22,5 @@ tcp_uart:
     host: 192.0.2.20
     port: 5000
     protocol: raw
+    address:
+      name: Remote address

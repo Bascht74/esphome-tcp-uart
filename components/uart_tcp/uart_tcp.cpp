@@ -52,6 +52,38 @@ void UartTcp::publish_link_() {
   }
 }
 
+void UartTcp::publish_address_(const std::string &ip) {
+  if (this->address_sensor_ == nullptr || ip.empty()) {
+    return;
+  }
+  std::string next = ip + ":" + std::to_string(this->port_);
+  if (next == this->address_) {
+    return;
+  }
+  this->address_ = std::move(next);
+  this->address_sensor_->publish_state(this->address_);
+}
+
+void UartTcp::clear_address_() {
+  if (this->address_sensor_ == nullptr || this->address_.empty()) {
+    return;
+  }
+  this->address_.clear();
+  this->address_sensor_->publish_state("");
+}
+
+void UartTcp::publish_peer_(const struct sockaddr *addr) {
+  if (addr == nullptr || addr->sa_family != AF_INET) {
+    return;
+  }
+  char buf[INET_ADDRSTRLEN];
+  auto *in = reinterpret_cast<const struct sockaddr_in *>(addr);
+  if (inet_ntop(AF_INET, &in->sin_addr, buf, sizeof(buf)) == nullptr) {
+    return;
+  }
+  this->publish_address_(buf);
+}
+
 void UartTcp::setup() {
   this->tcp_buf_.reserve(300);
   if (this->parent_ != nullptr) {
@@ -97,6 +129,9 @@ void UartTcp::close_sock_() {
   this->wait_uart_ = false;
   this->wait_local_ = false;
   this->wait_tcp_ = false;
+  if (this->server_) {
+    this->clear_address_();
+  }
   if (was) {
     this->note_drop_();
   }
@@ -179,6 +214,7 @@ void UartTcp::try_resolve_() {
 
 bool UartTcp::ip_ready_() {
   if (!this->resolved_ip_.empty()) {
+    this->publish_address_(this->resolved_ip_);
     return true;
   }
   if (!this->have_addr_.load()) {
@@ -191,6 +227,7 @@ bool UartTcp::ip_ready_() {
     return false;
   }
   this->resolved_ip_ = buf;
+  this->publish_address_(this->resolved_ip_);
   return true;
 }
 
@@ -271,6 +308,7 @@ void UartTcp::accept_client_() {
   this->sock_ = std::move(client);
   this->set_link_up_(true);
   this->tcp_buf_.clear();
+  this->publish_peer_(reinterpret_cast<struct sockaddr *>(&peer));
   ESP_LOGI(TAG, "Client connected");
 }
 

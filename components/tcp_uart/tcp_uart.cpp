@@ -40,6 +40,38 @@ void TcpUart::publish_link_() {
   }
 }
 
+void TcpUart::publish_address_(const std::string &ip) {
+  if (this->address_sensor_ == nullptr || ip.empty()) {
+    return;
+  }
+  std::string next = ip + ":" + std::to_string(this->port_);
+  if (next == this->address_) {
+    return;
+  }
+  this->address_ = std::move(next);
+  this->address_sensor_->publish_state(this->address_);
+}
+
+void TcpUart::clear_address_() {
+  if (this->address_sensor_ == nullptr || this->address_.empty()) {
+    return;
+  }
+  this->address_.clear();
+  this->address_sensor_->publish_state("");
+}
+
+void TcpUart::publish_peer_(const struct sockaddr *addr) {
+  if (addr == nullptr || addr->sa_family != AF_INET) {
+    return;
+  }
+  char buf[INET_ADDRSTRLEN];
+  auto *in = reinterpret_cast<const struct sockaddr_in *>(addr);
+  if (inet_ntop(AF_INET, &in->sin_addr, buf, sizeof(buf)) == nullptr) {
+    return;
+  }
+  this->publish_address_(buf);
+}
+
 void TcpUart::setup() {
   this->publish_link_();
   if (this->drop_sensor_ != nullptr) {
@@ -76,6 +108,9 @@ void TcpUart::close_sock_() {
   this->tx_.clear();
   this->tcp_buf_.clear();
   this->response_pending_ = false;
+  if (this->server_) {
+    this->clear_address_();
+  }
   if (was) {
     this->note_drop_();
   }
@@ -158,6 +193,7 @@ void TcpUart::try_resolve_() {
 
 bool TcpUart::ip_ready_() {
   if (!this->resolved_ip_.empty()) {
+    this->publish_address_(this->resolved_ip_);
     return true;
   }
   if (!this->have_addr_.load()) {
@@ -170,6 +206,7 @@ bool TcpUart::ip_ready_() {
     return false;
   }
   this->resolved_ip_ = buf;
+  this->publish_address_(this->resolved_ip_);
   return true;
 }
 
@@ -249,6 +286,7 @@ void TcpUart::accept_client_() {
   this->apply_socket_options_(client.get());
   this->sock_ = std::move(client);
   this->set_link_up_(true);
+  this->publish_peer_(reinterpret_cast<struct sockaddr *>(&peer));
   ESP_LOGI(TAG, "Client connected");
 }
 
