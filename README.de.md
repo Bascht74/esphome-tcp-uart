@@ -25,7 +25,7 @@ Dieses Gerät baut die TCP-Verbindung auf. `host` ist Pflicht.
 
 ### Ohne Pins
 
-`role` ist standardmäßig `client` und kann wegbleiben. Die Id wird einer Komponente als `uart_id` gegeben. Der Socket ist kein Pin und hat keinen Pegel. `baud_rate` wird nur gespeichert, damit die Komponente sie lesen kann. Sie wird nicht gesendet.
+`role` ist standardmäßig `client` und kann wegbleiben. Die Id wird einer Komponente als `uart_id` gegeben.
 
 ```yaml
 tcp_uart:
@@ -39,12 +39,11 @@ tcp_uart:
 | `host` | — | Pflicht. |
 | `port` | — | Pflicht. Port auf diesem Host. |
 | `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
-| `baud_rate` | 9600 | Nicht auf der Leitung. |
 | `reconnect_interval` | 5s | Pause nach Fehlwahl oder Abbruch. |
 
 ### Mit Pins
 
-`role: client` ist hier Pflicht, weil diese Komponente sonst lauscht. Pins und Baudrate bleiben am [`uart:`](https://esphome.io/components/uart.html)-Eintrag.
+`role: client` ist hier Pflicht, weil diese Komponente sonst lauscht. Die Pins sind eine [UART](https://esphome.io/components/uart.html).
 
 ```yaml
 uart_tcp:
@@ -77,19 +76,18 @@ tcp_uart:
     port: 5000
 ```
 
-`local_serial` wird als `uart_id` übergeben. `baud_rate` wird gespeichert und nicht gesendet.
+`local_serial` wird als `uart_id` übergeben.
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
 | `role` | — | Pflicht. Setze `server`. |
 | `port` | — | Pflicht. Port auf diesem Gerät. |
 | `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
-| `baud_rate` | 9600 | Nicht auf der Leitung. |
 | `reconnect_interval` | 5s | Pause nach fehlgeschlagenem Lauschen oder Abbruch. |
 
 ### Mit Pins
 
-`role` ist standardmäßig `server` und kann wegbleiben. Pins und Baudrate bleiben am [`uart:`](https://esphome.io/components/uart.html)-Eintrag.
+`role` ist standardmäßig `server` und kann wegbleiben. Die Pins sind eine [UART](https://esphome.io/components/uart.html).
 
 ```yaml
 uart_tcp:

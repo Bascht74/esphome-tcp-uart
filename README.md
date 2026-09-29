@@ -25,7 +25,7 @@ This device opens the TCP connection. `host` is required.
 
 ### No pins
 
-`role` defaults to `client` and can be left out. Pass the id to a component as `uart_id`. The socket is not a pin and has no line level. `baud_rate` is stored so the component can read it. It is not sent.
+`role` defaults to `client` and can be left out. Pass the id to a component as `uart_id`.
 
 ```yaml
 tcp_uart:
@@ -39,12 +39,11 @@ tcp_uart:
 | `host` | — | Required. |
 | `port` | — | Required. Port on that host. |
 | `protocol` | `raw` | `modbus` if the peer speaks Modbus TCP. |
-| `baud_rate` | 9600 | Not on the wire. |
 | `reconnect_interval` | 5s | Pause after a failed dial or a dropped link. |
 
 ### Pins
 
-`role: client` is required here, because this component listens unless told otherwise. Pins and baud stay on the [`uart:`](https://esphome.io/components/uart.html) entry.
+`role: client` is required here, because this component listens unless told otherwise. The pins are a [UART](https://esphome.io/components/uart.html).
 
 ```yaml
 uart_tcp:
@@ -77,19 +76,18 @@ tcp_uart:
     port: 5000
 ```
 
-Pass `local_serial` as `uart_id`. `baud_rate` is stored and is not sent.
+Pass `local_serial` as `uart_id`.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `role` | — | Required. Set `server`. |
 | `port` | — | Required. Port on this device. |
 | `protocol` | `raw` | `modbus` if the peer speaks Modbus TCP. |
-| `baud_rate` | 9600 | Not on the wire. |
 | `reconnect_interval` | 5s | Pause after a failed listen or a dropped link. |
 
 ### Pins
 
-`role` defaults to `server` and can be left out. Pins and baud stay on the [`uart:`](https://esphome.io/components/uart.html) entry.
+`role` defaults to `server` and can be left out. The pins are a [UART](https://esphome.io/components/uart.html).
 
 ```yaml
 uart_tcp:
