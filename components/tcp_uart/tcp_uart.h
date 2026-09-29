@@ -5,11 +5,12 @@
 #include "esphome/components/socket/socket.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/uart/uart_component.h"
+#include "esphome/core/application.h"
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/string_ref.h"
 
-#ifdef USE_ESP32
+#if !defined(USE_HOST) && !defined(USE_ZEPHYR)
 #include "lwip/ip_addr.h"
 #endif
 
@@ -85,9 +86,18 @@ protected:
   void publish_peer_(const struct sockaddr *addr);
   void note_drop_();
   void note_io_();
+  void note_attempt_() { this->last_attempt_ms_ = App.get_loop_component_start_time(); }
+  bool in_backoff_() const {
+    return App.get_loop_component_start_time() - this->last_attempt_ms_ < this->reconnect_interval_ms_;
+  }
+  void forget_addr_() {
+    this->have_addr_.store(false);
+    this->resolved_addr_.store(0);
+    this->resolved_ip_[0] = '\0';
+  }
   void check_idle_();
   bool peer_allowed_(const struct sockaddr *addr);
-#ifdef USE_ESP32
+#if !defined(USE_HOST) && !defined(USE_ZEPHYR)
   static void dns_found_(const char *name, const ip_addr_t *addr, void *arg);
 #endif
 
@@ -99,7 +109,10 @@ protected:
   std::unique_ptr<socket::ListenSocket> listen_;
   bool connecting_{false};
   bool connected_{false};
-  uint32_t next_connect_ms_{0};
+  bool offline_drop_logged_{false};
+  // A read stopped before EAGAIN. ready() stays false until new data arrives.
+  bool rx_pending_{false};
+  uint32_t last_attempt_ms_{0};
   uint32_t reconnect_interval_ms_{5000};
   uint32_t stall_timeout_ms_{0};
   uint32_t idle_timeout_ms_{0};
@@ -113,9 +126,10 @@ protected:
   text_sensor::TextSensor *address_sensor_{nullptr};
   char address_[32]{};
 
-  std::atomic<bool> resolving_{false};
-  std::atomic<bool> resolve_failed_{false};
-  std::atomic<bool> have_addr_{false};
+  // Only load and store. exchange() needs libatomic on BK72xx and native ESP8266.
+  std::atomic<uint8_t> resolving_{0};
+  std::atomic<uint8_t> resolve_failed_{0};
+  std::atomic<uint8_t> have_addr_{0};
   std::atomic<uint32_t> resolved_addr_{0};
   char resolved_ip_[16]{};
 
