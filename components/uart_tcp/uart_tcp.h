@@ -2,8 +2,8 @@
 
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/sensor/sensor.h"
-#include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/socket/socket.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/uart/uart_component.h"
 #include "esphome/core/component.h"
@@ -25,21 +25,30 @@ namespace uart_tcp {
 // Copies bytes between a hardware UART and one controlling TCP socket.
 // protocol raw: unchanged bytes. protocol modbus: MBAP on TCP, RTU on the pins.
 // With protocol modbus and role server, this id is also a UART. A local
-// modbus_controller writes here. One frame is on the pins at a time, local first.
-class UartTcp : public Component, public uart::UARTDevice, public uart::UARTComponent {
- public:
+// modbus_controller writes here. One frame is on the pins at a time, local
+// first.
+class UartTcp : public Component,
+                public uart::UARTDevice,
+                public uart::UARTComponent {
+public:
   void set_host(const char *host) { this->host_ = StringRef(host); }
   void set_port(uint16_t port) { this->port_ = port; }
   void set_tap_port(uint16_t port) { this->tap_port_ = port; }
-  void set_reconnect_interval(uint32_t ms) { this->reconnect_interval_ms_ = ms; }
+  void set_reconnect_interval(uint32_t ms) {
+    this->reconnect_interval_ms_ = ms;
+  }
   void set_response_timeout(uint32_t ms) { this->response_timeout_ms_ = ms; }
   void set_stall_timeout(uint32_t ms) { this->stall_timeout_ms_ = ms; }
   void set_idle_timeout(uint32_t ms) { this->idle_timeout_ms_ = ms; }
   void set_server(bool server) { this->server_ = server; }
   void set_modbus(bool modbus) { this->modbus_ = modbus; }
-  void set_connected_sensor(binary_sensor::BinarySensor *sensor) { this->connected_sensor_ = sensor; }
+  void set_connected_sensor(binary_sensor::BinarySensor *sensor) {
+    this->connected_sensor_ = sensor;
+  }
   void set_drop_sensor(sensor::Sensor *sensor) { this->drop_sensor_ = sensor; }
-  void set_address_sensor(text_sensor::TextSensor *sensor) { this->address_sensor_ = sensor; }
+  void set_address_sensor(text_sensor::TextSensor *sensor) {
+    this->address_sensor_ = sensor;
+  }
   void add_allowed(const char *host);
 
   void setup() override;
@@ -58,7 +67,7 @@ class UartTcp : public Component, public uart::UARTDevice, public uart::UARTComp
   void load_settings(bool dump_config) override {}
 #endif
 
- protected:
+protected:
   void check_logger_conflict() override {}
   void close_sock_();
   void close_listen_();
@@ -73,10 +82,11 @@ class UartTcp : public Component, public uart::UARTDevice, public uart::UARTComp
   void pump_raw_();
   void pump_modbus_();
   void write_rtu_(const uint8_t *pdu, size_t pdu_len, uint8_t unit);
-  void send_mbap_(uint16_t txn, uint8_t unit, const uint8_t *pdu, size_t pdu_len);
+  void send_mbap_(uint16_t txn, uint8_t unit, const uint8_t *pdu,
+                  size_t pdu_len);
   void send_gateway_fail_(uint16_t txn, uint8_t unit, uint8_t function);
-  bool take_mbap_(std::vector<uint8_t> *pdu, uint8_t *unit, uint16_t *txn);
-  bool take_rtu_(std::vector<uint8_t> *pdu, uint8_t *unit);
+  bool take_mbap_(uint8_t *pdu, size_t *pdu_len, uint8_t *unit, uint16_t *txn);
+  bool take_rtu_(uint8_t *pdu, size_t *pdu_len, uint8_t *unit);
   void pull_uart_();
   void set_link_up_(bool up);
   void publish_link_();
@@ -138,13 +148,16 @@ class UartTcp : public Component, public uart::UARTDevice, public uart::UARTComp
   std::atomic<uint32_t> resolved_addr_{0};
   char resolved_ip_[16]{};
 
-  std::vector<uint8_t> tcp_buf_;
-  std::vector<uint8_t> uart_buf_;
-  std::vector<uint8_t> local_tx_;
+  uint8_t tcp_buf_[512]{};
+  size_t tcp_len_{0};
+  uint8_t uart_buf_[512]{};
+  size_t uart_len_{0};
+  uint8_t local_tx_[300]{};
+  size_t local_tx_len_{0};
   StaticRingBuffer<uint8_t, 512> local_rx_;
   std::vector<std::unique_ptr<socket::Socket>> taps_;
   std::vector<uint32_t> allowed_;
 };
 
-}  // namespace uart_tcp
-}  // namespace esphome
+} // namespace uart_tcp
+} // namespace esphome

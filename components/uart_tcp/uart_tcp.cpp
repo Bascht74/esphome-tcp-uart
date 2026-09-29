@@ -1,11 +1,11 @@
 #include "uart_tcp.h"
 
-#include "esphome/core/hal.h"
 #include "esphome/core/application.h"
+#include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 
-#include <cinttypes>
 #include <cerrno>
+#include <cinttypes>
 #include <cstdio>
 #include <cstring>
 
@@ -25,6 +25,27 @@ namespace uart_tcp {
 static const char *const TAG = "uart_tcp";
 
 uint32_t loop_time() { return App.get_loop_component_start_time(); }
+
+void append_buf(uint8_t *buf, size_t *len, size_t cap, const uint8_t *src,
+                size_t n) {
+  if (*len >= cap || n == 0) {
+    return;
+  }
+  if (n > cap - *len) {
+    n = cap - *len;
+  }
+  std::memcpy(buf + *len, src, n);
+  *len += n;
+}
+
+void consume_buf(uint8_t *buf, size_t *len, size_t n) {
+  if (n >= *len) {
+    *len = 0;
+    return;
+  }
+  std::memmove(buf, buf + n, *len - n);
+  *len -= n;
+}
 
 static uint16_t crc16(const uint8_t *data, size_t len) {
   uint16_t crc = 0xFFFF;
@@ -90,7 +111,6 @@ void UartTcp::publish_peer_(const struct sockaddr *addr) {
 }
 
 void UartTcp::setup() {
-  this->tcp_buf_.reserve(300);
   if (this->parent_ != nullptr) {
     this->set_baud_rate(this->parent_->get_baud_rate());
   }
@@ -104,8 +124,12 @@ void UartTcp::setup() {
 
 void UartTcp::dump_config() {
   ESP_LOGCONFIG(TAG, "UART TCP bridge:");
-  ESP_LOGCONFIG(TAG, "  Role: %s", this->server_ ? LOG_STR_LITERAL("server") : LOG_STR_LITERAL("client"));
-  ESP_LOGCONFIG(TAG, "  Protocol: %s", this->modbus_ ? LOG_STR_LITERAL("modbus") : LOG_STR_LITERAL("raw"));
+  ESP_LOGCONFIG(TAG, "  Role: %s",
+                this->server_ ? LOG_STR_LITERAL("server")
+                              : LOG_STR_LITERAL("client"));
+  ESP_LOGCONFIG(TAG, "  Protocol: %s",
+                this->modbus_ ? LOG_STR_LITERAL("modbus")
+                              : LOG_STR_LITERAL("raw"));
   if (this->server_) {
     ESP_LOGCONFIG(TAG, "  Listen: %u", this->port_);
   } else {
@@ -129,8 +153,8 @@ void UartTcp::close_sock_() {
   }
   this->connecting_ = false;
   this->set_link_up_(false);
-  this->tcp_buf_.clear();
-  this->uart_buf_.clear();
+  this->tcp_len_ = 0;
+  this->uart_len_ = 0;
   this->wait_uart_ = false;
   this->wait_local_ = false;
   this->wait_tcp_ = false;
@@ -178,15 +202,18 @@ void UartTcp::try_resolve_() {
     return;
   }
   struct sockaddr_storage literal;
-  if (socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&literal), sizeof(literal), this->host_.c_str(),
+  if (socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&literal),
+                           sizeof(literal), this->host_.c_str(),
                            this->port_) != 0) {
-    snprintf(this->resolved_ip_, sizeof(this->resolved_ip_), "%s", this->host_.c_str());
+    snprintf(this->resolved_ip_, sizeof(this->resolved_ip_), "%s",
+             this->host_.c_str());
     this->have_addr_.store(true);
     return;
   }
 #ifdef USE_ESP32
   ip_addr_t cached;
-  err_t err = dns_gethostbyname(this->host_.c_str(), &cached, &UartTcp::dns_found_, this);
+  err_t err = dns_gethostbyname(this->host_.c_str(), &cached,
+                                &UartTcp::dns_found_, this);
   if (err == ERR_OK && IP_IS_V4(&cached)) {
     this->resolved_addr_.store(ip4_addr_get_u32(ip_2_ip4(&cached)));
     this->have_addr_.store(true);
@@ -201,7 +228,8 @@ void UartTcp::try_resolve_() {
   hints.ai_family = AF_INET;
   hints.ai_socktype = SOCK_STREAM;
   struct addrinfo *res = nullptr;
-  if (getaddrinfo(this->host_.c_str(), nullptr, &hints, &res) == 0 && res != nullptr) {
+  if (getaddrinfo(this->host_.c_str(), nullptr, &hints, &res) == 0 &&
+      res != nullptr) {
     char buf[INET_ADDRSTRLEN];
     auto *in = reinterpret_cast<struct sockaddr_in *>(res->ai_addr);
     if (inet_ntop(AF_INET, &in->sin_addr, buf, sizeof(buf)) != nullptr) {
@@ -250,7 +278,8 @@ void UartTcp::try_connect_() {
   }
   struct sockaddr_storage dest;
   socklen_t dest_len =
-      socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&dest), sizeof(dest), this->resolved_ip_, this->port_);
+      socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&dest),
+                           sizeof(dest), this->resolved_ip_, this->port_);
   if (dest_len == 0) {
     this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
     return;
@@ -261,7 +290,8 @@ void UartTcp::try_connect_() {
     return;
   }
   this->apply_socket_options_(this->sock_.get());
-  int rc = this->sock_->connect(reinterpret_cast<struct sockaddr *>(&dest), dest_len);
+  int rc = this->sock_->connect(reinterpret_cast<struct sockaddr *>(&dest),
+                                dest_len);
   if (rc == 0 || errno == EINPROGRESS) {
     this->connecting_ = rc != 0;
     this->set_link_up_(rc == 0);
@@ -284,9 +314,11 @@ void UartTcp::try_listen_() {
   this->listen_->setsockopt(SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
   this->listen_->setblocking(false);
   struct sockaddr_storage local;
-  socklen_t local_len =
-      socket::set_sockaddr_any(reinterpret_cast<struct sockaddr *>(&local), sizeof(local), this->port_);
-  if (local_len == 0 || this->listen_->bind(reinterpret_cast<struct sockaddr *>(&local), local_len) != 0 ||
+  socklen_t local_len = socket::set_sockaddr_any(
+      reinterpret_cast<struct sockaddr *>(&local), sizeof(local), this->port_);
+  if (local_len == 0 ||
+      this->listen_->bind(reinterpret_cast<struct sockaddr *>(&local),
+                          local_len) != 0 ||
       this->listen_->listen(1) != 0) {
     ESP_LOGW(TAG, "Listen on %u failed", this->port_);
     this->listen_.reset();
@@ -302,7 +334,8 @@ void UartTcp::accept_client_() {
   }
   struct sockaddr_storage peer;
   socklen_t peer_len = sizeof(peer);
-  auto client = this->listen_->accept(reinterpret_cast<struct sockaddr *>(&peer), &peer_len);
+  auto client = this->listen_->accept(
+      reinterpret_cast<struct sockaddr *>(&peer), &peer_len);
   if (client == nullptr) {
     return;
   }
@@ -313,7 +346,7 @@ void UartTcp::accept_client_() {
   this->apply_socket_options_(client.get());
   this->sock_ = std::move(client);
   this->set_link_up_(true);
-  this->tcp_buf_.clear();
+  this->tcp_len_ = 0;
   this->publish_peer_(reinterpret_cast<struct sockaddr *>(&peer));
   ESP_LOGI(TAG, "Client connected");
 }
@@ -325,7 +358,8 @@ void UartTcp::read_socket_() {
   if (this->connecting_) {
     int err = 0;
     socklen_t len = sizeof(err);
-    if (this->sock_->getsockopt(SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0) {
+    if (this->sock_->getsockopt(SOL_SOCKET, SO_ERROR, &err, &len) < 0 ||
+        err != 0) {
       this->close_sock_();
       this->next_connect_ms_ = loop_time() + this->reconnect_interval_ms_;
       return;
@@ -344,7 +378,8 @@ void UartTcp::read_socket_() {
   }
   if (count > 0) {
     this->note_io_();
-    this->tcp_buf_.insert(this->tcp_buf_.end(), tmp, tmp + count);
+    append_buf(this->tcp_buf_, &this->tcp_len_, sizeof(this->tcp_buf_), tmp,
+               static_cast<size_t>(count));
   }
 }
 
@@ -371,12 +406,13 @@ void UartTcp::send_all_(const uint8_t *data, size_t len) {
 
 void UartTcp::pull_uart_() {
   uint8_t tmp[128];
-  while (this->parent_->available() > 0 && this->uart_buf_.size() < 512) {
+  while (this->parent_->available() > 0 && this->uart_len_ < 512) {
     size_t want = std::min(this->parent_->available(), sizeof(tmp));
     if (!this->parent_->read_array(tmp, want)) {
       break;
     }
-    this->uart_buf_.insert(this->uart_buf_.end(), tmp, tmp + want);
+    append_buf(this->uart_buf_, &this->uart_len_, sizeof(this->uart_buf_), tmp,
+               want);
     this->last_uart_us_ = micros();
   }
 }
@@ -395,77 +431,83 @@ uint32_t UartTcp::frame_gap_us_() const {
   if (this->parent_->get_parity() != uart::UART_CONFIG_PARITY_NONE) {
     bits++;
   }
-  return std::max<uint32_t>(2000u, static_cast<uint32_t>(3.5f * bits * 1000000.0f / baud) + 1);
+  return std::max<uint32_t>(
+      2000u, static_cast<uint32_t>(3.5f * bits * 1000000.0f / baud) + 1);
 }
 
 void UartTcp::pump_raw_() {
-  if (!this->tcp_buf_.empty()) {
-    this->send_tap_(this->tcp_buf_.data(), this->tcp_buf_.size());
-    this->parent_->write_array(this->tcp_buf_.data(), this->tcp_buf_.size());
-    this->tcp_buf_.clear();
+  if (this->tcp_len_ != 0) {
+    this->send_tap_(this->tcp_buf_, this->tcp_len_);
+    this->parent_->write_array(this->tcp_buf_, this->tcp_len_);
+    this->tcp_len_ = 0;
   }
   this->pull_uart_();
-  if (!this->uart_buf_.empty()) {
-    this->send_tap_(this->uart_buf_.data(), this->uart_buf_.size());
-    this->send_all_(this->uart_buf_.data(), this->uart_buf_.size());
-    this->uart_buf_.clear();
+  if (this->uart_len_ != 0) {
+    this->send_tap_(this->uart_buf_, this->uart_len_);
+    this->send_all_(this->uart_buf_, this->uart_len_);
+    this->uart_len_ = 0;
   }
 }
 
-bool UartTcp::take_mbap_(std::vector<uint8_t> *pdu, uint8_t *unit, uint16_t *txn) {
-  if (this->tcp_buf_.size() < 7) {
+bool UartTcp::take_mbap_(uint8_t *pdu, size_t *pdu_len, uint8_t *unit,
+                         uint16_t *txn) {
+  if (this->tcp_len_ < 7) {
     return false;
   }
   uint16_t proto = (this->tcp_buf_[2] << 8) | this->tcp_buf_[3];
   uint16_t length = (this->tcp_buf_[4] << 8) | this->tcp_buf_[5];
   if (proto != 0 || length < 2 || length > 254) {
-    this->tcp_buf_.erase(this->tcp_buf_.begin());
+    consume_buf(this->tcp_buf_, &this->tcp_len_, 1);
     return false;
   }
-  if (this->tcp_buf_.size() < 6u + length) {
+  if (this->tcp_len_ < 6u + length) {
     return false;
   }
   *txn = (this->tcp_buf_[0] << 8) | this->tcp_buf_[1];
   *unit = this->tcp_buf_[6];
-  pdu->assign(this->tcp_buf_.begin() + 7, this->tcp_buf_.begin() + 6 + length);
-  this->tcp_buf_.erase(this->tcp_buf_.begin(), this->tcp_buf_.begin() + 6 + length);
+  *pdu_len = length - 1;
+  std::memcpy(pdu, this->tcp_buf_ + 7, *pdu_len);
+  consume_buf(this->tcp_buf_, &this->tcp_len_, 6u + length);
   return true;
 }
 
-bool UartTcp::take_rtu_(std::vector<uint8_t> *pdu, uint8_t *unit) {
-  if (this->uart_buf_.size() < 4) {
+bool UartTcp::take_rtu_(uint8_t *pdu, size_t *pdu_len, uint8_t *unit) {
+  if (this->uart_len_ < 4) {
     return false;
   }
   if (micros() - this->last_uart_us_ < this->frame_gap_us_()) {
     return false;
   }
-  uint16_t got = this->uart_buf_[this->uart_buf_.size() - 2] | (this->uart_buf_[this->uart_buf_.size() - 1] << 8);
-  uint16_t expect = crc16(this->uart_buf_.data(), this->uart_buf_.size() - 2);
+  uint16_t got = this->uart_buf_[this->uart_len_ - 2] |
+                 (this->uart_buf_[this->uart_len_ - 1] << 8);
+  uint16_t expect = crc16(this->uart_buf_, this->uart_len_ - 2);
   if (got != expect) {
     ESP_LOGW(TAG, "RTU CRC mismatch");
-    this->uart_buf_.clear();
+    this->uart_len_ = 0;
     return false;
   }
   *unit = this->uart_buf_[0];
-  pdu->assign(this->uart_buf_.begin() + 1, this->uart_buf_.end() - 2);
-  this->uart_buf_.clear();
+  *pdu_len = this->uart_len_ - 3;
+  std::memcpy(pdu, this->uart_buf_ + 1, *pdu_len);
+  this->uart_len_ = 0;
   return true;
 }
 
 void UartTcp::write_rtu_(const uint8_t *pdu, size_t pdu_len, uint8_t unit) {
-  std::vector<uint8_t> frame;
-  frame.reserve(pdu_len + 3);
-  frame.push_back(unit);
-  frame.insert(frame.end(), pdu, pdu + pdu_len);
-  uint16_t crc = crc16(frame.data(), frame.size());
-  frame.push_back(crc & 0xFF);
-  frame.push_back(crc >> 8);
-  this->send_tap_(frame.data(), frame.size());
-  this->parent_->write_array(frame.data(), frame.size());
+  uint8_t frame[256];
+  frame[0] = unit;
+  std::memcpy(frame + 1, pdu, pdu_len);
+  size_t frame_len = 1 + pdu_len;
+  uint16_t crc = crc16(frame, frame_len);
+  frame[frame_len++] = crc & 0xFF;
+  frame[frame_len++] = crc >> 8;
+  this->send_tap_(frame, frame_len);
+  this->parent_->write_array(frame, frame_len);
   this->parent_->flush();
 }
 
-void UartTcp::send_mbap_(uint16_t txn, uint8_t unit, const uint8_t *pdu, size_t pdu_len) {
+void UartTcp::send_mbap_(uint16_t txn, uint8_t unit, const uint8_t *pdu,
+                         size_t pdu_len) {
   uint8_t header[7];
   uint16_t length = pdu_len + 1;
   header[0] = txn >> 8;
@@ -487,29 +529,32 @@ void UartTcp::send_gateway_fail_(uint16_t txn, uint8_t unit, uint8_t function) {
 void UartTcp::pump_modbus_() {
   if (this->wait_uart_ || this->wait_local_) {
     this->pull_uart_();
-    std::vector<uint8_t> pdu;
+    uint8_t pdu[253];
+    size_t pdu_len = 0;
     uint8_t unit = 0;
-    if (this->take_rtu_(&pdu, &unit)) {
-      std::vector<uint8_t> frame;
-      frame.reserve(pdu.size() + 3);
-      frame.push_back(unit);
-      frame.insert(frame.end(), pdu.begin(), pdu.end());
-      uint16_t crc = crc16(frame.data(), frame.size());
-      frame.push_back(crc & 0xFF);
-      frame.push_back(crc >> 8);
-      this->send_tap_(frame.data(), frame.size());
+    if (this->take_rtu_(pdu, &pdu_len, &unit)) {
+      uint8_t frame[256];
+      frame[0] = unit;
+      std::memcpy(frame + 1, pdu, pdu_len);
+      size_t frame_len = 1 + pdu_len;
+      uint16_t crc = crc16(frame, frame_len);
+      frame[frame_len++] = crc & 0xFF;
+      frame[frame_len++] = crc >> 8;
+      this->send_tap_(frame, frame_len);
       if (this->wait_local_) {
-        this->push_local_(frame.data(), frame.size());
+        this->push_local_(frame, frame_len);
         this->wait_local_ = false;
       } else {
-        this->send_mbap_(this->pending_txn_, unit, pdu.data(), pdu.size());
+        this->send_mbap_(this->pending_txn_, unit, pdu, pdu_len);
         this->wait_uart_ = false;
       }
-    } else if (loop_time() - this->wait_started_ms_ > this->response_timeout_ms_) {
+    } else if (loop_time() - this->wait_started_ms_ >
+               this->response_timeout_ms_) {
       ESP_LOGW(TAG, "RTU response timeout");
-      this->uart_buf_.clear();
+      this->uart_len_ = 0;
       if (this->wait_uart_) {
-        this->send_gateway_fail_(this->pending_txn_, this->pending_unit_, this->pending_function_);
+        this->send_gateway_fail_(this->pending_txn_, this->pending_unit_,
+                                 this->pending_function_);
       }
       this->wait_uart_ = false;
       this->wait_local_ = false;
@@ -517,17 +562,19 @@ void UartTcp::pump_modbus_() {
     return;
   }
   if (this->wait_tcp_) {
-    std::vector<uint8_t> pdu;
+    uint8_t pdu[253];
+    size_t pdu_len = 0;
     uint8_t unit = 0;
     uint16_t txn = 0;
-    if (this->take_mbap_(&pdu, &unit, &txn)) {
+    if (this->take_mbap_(pdu, &pdu_len, &unit, &txn)) {
       if (txn == this->pending_txn_) {
-        this->write_rtu_(pdu.data(), pdu.size(), unit);
+        this->write_rtu_(pdu, pdu_len, unit);
       }
       this->wait_tcp_ = false;
-    } else if (loop_time() - this->wait_started_ms_ > this->response_timeout_ms_) {
+    } else if (loop_time() - this->wait_started_ms_ >
+               this->response_timeout_ms_) {
       ESP_LOGW(TAG, "TCP response timeout");
-      this->tcp_buf_.clear();
+      this->tcp_len_ = 0;
       this->wait_tcp_ = false;
     }
     return;
@@ -540,32 +587,34 @@ void UartTcp::pump_modbus_() {
     if (!this->connected_) {
       return;
     }
-    std::vector<uint8_t> pdu;
+    uint8_t pdu[253];
+    size_t pdu_len = 0;
     uint8_t unit = 0;
     uint16_t txn = 0;
-    if (!this->take_mbap_(&pdu, &unit, &txn) || pdu.empty()) {
+    if (!this->take_mbap_(pdu, &pdu_len, &unit, &txn) || pdu_len == 0) {
       return;
     }
     this->pending_txn_ = txn;
     this->pending_unit_ = unit;
     this->pending_function_ = pdu[0];
-    this->uart_buf_.clear();
-    this->write_rtu_(pdu.data(), pdu.size(), unit);
+    this->uart_len_ = 0;
+    this->write_rtu_(pdu, pdu_len, unit);
     this->wait_uart_ = true;
     this->wait_started_ms_ = loop_time();
     this->last_uart_us_ = micros();
     return;
   }
   this->pull_uart_();
-  std::vector<uint8_t> pdu;
+  uint8_t pdu[253];
+  size_t pdu_len = 0;
   uint8_t unit = 0;
-  if (!this->take_rtu_(&pdu, &unit) || pdu.empty()) {
+  if (!this->take_rtu_(pdu, &pdu_len, &unit) || pdu_len == 0) {
     return;
   }
   this->txn_ = this->txn_ == 0xFFFF ? 1 : static_cast<uint16_t>(this->txn_ + 1);
   this->pending_txn_ = this->txn_;
   this->pending_function_ = pdu[0];
-  this->send_mbap_(this->pending_txn_, unit, pdu.data(), pdu.size());
+  this->send_mbap_(this->pending_txn_, unit, pdu, pdu_len);
   this->wait_tcp_ = true;
   this->wait_started_ms_ = loop_time();
 }
@@ -574,10 +623,8 @@ void UartTcp::write_array(const uint8_t *data, size_t len) {
   if (!this->server_ || !this->modbus_ || len == 0) {
     return;
   }
-  this->local_tx_.insert(this->local_tx_.end(), data, data + len);
-  if (this->local_tx_.size() > 300) {
-    this->local_tx_.clear();
-  }
+  append_buf(this->local_tx_, &this->local_tx_len_, sizeof(this->local_tx_),
+             data, len);
   this->last_local_us_ = micros();
 }
 
@@ -603,7 +650,7 @@ bool UartTcp::read_array(uint8_t *data, size_t len) {
 size_t UartTcp::available() { return this->local_rx_.size(); }
 
 uart::UARTFlushResult UartTcp::flush() {
-  if (this->local_tx_.size() >= 4) {
+  if (this->local_tx_len_ >= 4) {
     this->last_local_us_ = micros() - this->frame_gap_us_() - 1;
   }
   return uart::UARTFlushResult::UART_FLUSH_RESULT_ASSUMED_SUCCESS;
@@ -622,7 +669,8 @@ void UartTcp::check_idle_() {
   if (!this->connected_ || this->connecting_) {
     return;
   }
-  uint32_t limit = this->server_ ? this->idle_timeout_ms_ : this->stall_timeout_ms_;
+  uint32_t limit =
+      this->server_ ? this->idle_timeout_ms_ : this->stall_timeout_ms_;
   if (limit == 0 || this->last_io_ms_ == 0) {
     return;
   }
@@ -636,14 +684,16 @@ void UartTcp::check_idle_() {
 
 void UartTcp::add_allowed(const char *host) {
   struct sockaddr_storage addr;
-  if (socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr), host, 0) == 0) {
+  if (socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&addr),
+                           sizeof(addr), host, 0) == 0) {
     ESP_LOGW(TAG, "Ignored allowed host %s", host);
     return;
   }
   if (addr.ss_family != AF_INET) {
     return;
   }
-  this->allowed_.push_back(reinterpret_cast<struct sockaddr_in *>(&addr)->sin_addr.s_addr);
+  this->allowed_.push_back(
+      reinterpret_cast<struct sockaddr_in *>(&addr)->sin_addr.s_addr);
 }
 
 bool UartTcp::peer_allowed_(const struct sockaddr *addr) {
@@ -653,7 +703,8 @@ bool UartTcp::peer_allowed_(const struct sockaddr *addr) {
   if (addr == nullptr || addr->sa_family != AF_INET) {
     return false;
   }
-  uint32_t ip = reinterpret_cast<const struct sockaddr_in *>(addr)->sin_addr.s_addr;
+  uint32_t ip =
+      reinterpret_cast<const struct sockaddr_in *>(addr)->sin_addr.s_addr;
   for (uint32_t allowed : this->allowed_) {
     if (allowed == ip) {
       return true;
@@ -683,10 +734,12 @@ void UartTcp::send_tap_(const uint8_t *data, size_t len) {
 }
 
 void UartTcp::try_listen_tap_() {
-  if (this->tap_port_ == 0 || this->listen_tap_ != nullptr || loop_time() < this->next_connect_ms_) {
+  if (this->tap_port_ == 0 || this->listen_tap_ != nullptr ||
+      loop_time() < this->next_connect_ms_) {
     return;
   }
-  this->listen_tap_ = socket::socket_ip_loop_monitored(SOCK_STREAM, IPPROTO_TCP);
+  this->listen_tap_ =
+      socket::socket_ip_loop_monitored(SOCK_STREAM, IPPROTO_TCP);
   if (this->listen_tap_ == nullptr) {
     return;
   }
@@ -695,8 +748,11 @@ void UartTcp::try_listen_tap_() {
   this->listen_tap_->setblocking(false);
   struct sockaddr_storage local;
   socklen_t local_len =
-      socket::set_sockaddr_any(reinterpret_cast<struct sockaddr *>(&local), sizeof(local), this->tap_port_);
-  if (local_len == 0 || this->listen_tap_->bind(reinterpret_cast<struct sockaddr *>(&local), local_len) != 0 ||
+      socket::set_sockaddr_any(reinterpret_cast<struct sockaddr *>(&local),
+                               sizeof(local), this->tap_port_);
+  if (local_len == 0 ||
+      this->listen_tap_->bind(reinterpret_cast<struct sockaddr *>(&local),
+                              local_len) != 0 ||
       this->listen_tap_->listen(2) != 0) {
     ESP_LOGW(TAG, "Listen on tap %u failed", this->tap_port_);
     this->listen_tap_.reset();
@@ -711,7 +767,8 @@ void UartTcp::accept_tap_() {
   }
   struct sockaddr_storage peer;
   socklen_t peer_len = sizeof(peer);
-  auto client = this->listen_tap_->accept(reinterpret_cast<struct sockaddr *>(&peer), &peer_len);
+  auto client = this->listen_tap_->accept(
+      reinterpret_cast<struct sockaddr *>(&peer), &peer_len);
   if (client == nullptr) {
     return;
   }
@@ -748,23 +805,25 @@ void UartTcp::close_taps_() {
 }
 
 bool UartTcp::local_frame_ready_() {
-  return this->local_tx_.size() >= 4 && micros() - this->last_local_us_ >= this->frame_gap_us_();
+  return this->local_tx_len_ >= 4 &&
+         micros() - this->last_local_us_ >= this->frame_gap_us_();
 }
 
 void UartTcp::start_local_() {
-  uint16_t got = this->local_tx_[this->local_tx_.size() - 2] | (this->local_tx_[this->local_tx_.size() - 1] << 8);
-  uint16_t expect = crc16(this->local_tx_.data(), this->local_tx_.size() - 2);
+  uint16_t got = this->local_tx_[this->local_tx_len_ - 2] |
+                 (this->local_tx_[this->local_tx_len_ - 1] << 8);
+  uint16_t expect = crc16(this->local_tx_, this->local_tx_len_ - 2);
   if (got != expect) {
     ESP_LOGW(TAG, "Local RTU CRC mismatch");
-    this->local_tx_.clear();
+    this->local_tx_len_ = 0;
     return;
   }
   this->pending_function_ = this->local_tx_[1];
-  this->send_tap_(this->local_tx_.data(), this->local_tx_.size());
-  this->parent_->write_array(this->local_tx_.data(), this->local_tx_.size());
+  this->send_tap_(this->local_tx_, this->local_tx_len_);
+  this->parent_->write_array(this->local_tx_, this->local_tx_len_);
   this->parent_->flush();
-  this->local_tx_.clear();
-  this->uart_buf_.clear();
+  this->local_tx_len_ = 0;
+  this->uart_len_ = 0;
   this->wait_local_ = true;
   this->wait_started_ms_ = loop_time();
   this->last_uart_us_ = micros();
@@ -798,5 +857,5 @@ void UartTcp::loop() {
   }
 }
 
-}  // namespace uart_tcp
-}  // namespace esphome
+} // namespace uart_tcp
+} // namespace esphome

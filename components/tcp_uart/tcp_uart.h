@@ -2,8 +2,8 @@
 
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/sensor/sensor.h"
-#include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/socket/socket.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/uart/uart_component.h"
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
@@ -22,19 +22,26 @@ namespace esphome {
 namespace tcp_uart {
 
 // TCP socket presented as a UART.
-// protocol raw copies bytes. protocol modbus is MBAP on the socket and RTU toward ESPHome.
+// protocol raw copies bytes. protocol modbus is MBAP on the socket and RTU
+// toward ESPHome.
 class TcpUart : public uart::UARTComponent, public Component {
- public:
+public:
   void set_host(const char *host) { this->host_ = StringRef(host); }
   void set_port(uint16_t port) { this->port_ = port; }
-  void set_reconnect_interval(uint32_t ms) { this->reconnect_interval_ms_ = ms; }
+  void set_reconnect_interval(uint32_t ms) {
+    this->reconnect_interval_ms_ = ms;
+  }
   void set_stall_timeout(uint32_t ms) { this->stall_timeout_ms_ = ms; }
   void set_idle_timeout(uint32_t ms) { this->idle_timeout_ms_ = ms; }
   void set_server(bool server) { this->server_ = server; }
   void set_modbus(bool modbus) { this->modbus_ = modbus; }
-  void set_connected_sensor(binary_sensor::BinarySensor *sensor) { this->connected_sensor_ = sensor; }
+  void set_connected_sensor(binary_sensor::BinarySensor *sensor) {
+    this->connected_sensor_ = sensor;
+  }
   void set_drop_sensor(sensor::Sensor *sensor) { this->drop_sensor_ = sensor; }
-  void set_address_sensor(text_sensor::TextSensor *sensor) { this->address_sensor_ = sensor; }
+  void set_address_sensor(text_sensor::TextSensor *sensor) {
+    this->address_sensor_ = sensor;
+  }
   void add_allowed(const char *host);
 
   void setup() override;
@@ -48,12 +55,14 @@ class TcpUart : public uart::UARTComponent, public Component {
   bool read_array(uint8_t *data, size_t len) override;
   size_t available() override;
   uart::UARTFlushResult flush() override;
-  bool is_connected() override { return this->sock_ != nullptr && this->connected_; }
+  bool is_connected() override {
+    return this->sock_ != nullptr && this->connected_;
+  }
 #if defined(USE_ESP8266) || defined(USE_ESP32)
   void load_settings(bool dump_config) override {}
 #endif
 
- protected:
+protected:
   void check_logger_conflict() override {}
 
   void close_sock_();
@@ -111,10 +120,12 @@ class TcpUart : public uart::UARTComponent, public Component {
   char resolved_ip_[16]{};
 
   StaticRingBuffer<uint8_t, 1024> rx_;
-  std::vector<uint8_t> tx_;
-  std::vector<uint8_t> tcp_buf_;
+  uint8_t tx_[512]{};
+  size_t tx_len_{0};
+  uint8_t tcp_buf_[512]{};
+  size_t tcp_len_{0};
   std::vector<uint32_t> allowed_;
 };
 
-}  // namespace tcp_uart
-}  // namespace esphome
+} // namespace tcp_uart
+} // namespace esphome
