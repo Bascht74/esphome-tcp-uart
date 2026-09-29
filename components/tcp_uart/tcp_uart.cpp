@@ -226,11 +226,17 @@ void TcpUart::send_bytes_(const uint8_t *data, size_t len) {
   if (!this->connected_ || len == 0) {
     return;
   }
-  int sent = ::send(this->sock_, data, len, 0);
-  if (sent < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+  size_t sent_total = 0;
+  while (sent_total < len) {
+    int sent = ::send(this->sock_, data + sent_total, len - sent_total, 0);
+    if (sent > 0) {
+      sent_total += static_cast<size_t>(sent);
+      continue;
+    }
     ESP_LOGW(TAG, "Send failed");
     this->close_sock_();
     this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    return;
   }
 }
 
@@ -315,17 +321,18 @@ void TcpUart::send_rtu_frame_() {
     this->txn_ = this->txn_ == 0xFFFF ? 1 : static_cast<uint16_t>(this->txn_ + 1);
     txn = this->txn_;
   }
-  uint8_t header[7];
-  header[0] = txn >> 8;
-  header[1] = txn & 0xFF;
-  header[2] = 0;
-  header[3] = 0;
   uint16_t length = pdu_len + 1;
-  header[4] = length >> 8;
-  header[5] = length & 0xFF;
-  header[6] = unit;
-  this->send_bytes_(header, 7);
-  this->send_bytes_(pdu, pdu_len);
+  std::vector<uint8_t> frame;
+  frame.reserve(7 + pdu_len);
+  frame.push_back(txn >> 8);
+  frame.push_back(txn & 0xFF);
+  frame.push_back(0);
+  frame.push_back(0);
+  frame.push_back(length >> 8);
+  frame.push_back(length & 0xFF);
+  frame.push_back(unit);
+  frame.insert(frame.end(), pdu, pdu + pdu_len);
+  this->send_bytes_(frame.data(), frame.size());
   this->tx_.clear();
   this->response_pending_ = false;
 }
