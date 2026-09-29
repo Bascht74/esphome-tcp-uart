@@ -14,13 +14,15 @@
 namespace esphome {
 namespace tcp_uart {
 
-// Raw TCP byte pipe presented as a UART. No Modbus framing.
+// TCP socket presented as a UART.
+// protocol raw copies bytes. protocol modbus is MBAP on the socket and RTU toward ESPHome.
 class TcpUart : public uart::UARTComponent, public Component {
  public:
   void set_host(const std::string &host) { this->host_ = host; }
   void set_port(uint16_t port) { this->port_ = port; }
   void set_reconnect_interval(uint32_t ms) { this->reconnect_interval_ms_ = ms; }
   void set_server(bool server) { this->server_ = server; }
+  void set_modbus(bool modbus) { this->modbus_ = modbus; }
 
   void setup() override;
   void loop() override;
@@ -46,6 +48,9 @@ class TcpUart : public uart::UARTComponent, public Component {
   void try_listen_();
   void accept_client_();
   void read_socket_();
+  void extract_frames_();
+  void send_rtu_frame_();
+  void push_rx_(uint8_t byte);
   void send_bytes_(const uint8_t *data, size_t len);
   void apply_socket_options_(int fd);
   static void dns_found_(const char *name, const ip_addr_t *addr, void *arg);
@@ -53,12 +58,16 @@ class TcpUart : public uart::UARTComponent, public Component {
   std::string host_;
   uint16_t port_{0};
   bool server_{false};
+  bool modbus_{false};
   int sock_{-1};
   int listen_{-1};
   bool connecting_{false};
   bool connected_{false};
   uint32_t next_connect_ms_{0};
   uint32_t reconnect_interval_ms_{5000};
+  uint16_t txn_{0};
+  uint16_t last_request_txn_{0};
+  bool response_pending_{false};
 
   std::atomic<bool> resolving_{false};
   std::atomic<bool> resolve_failed_{false};
@@ -66,6 +75,8 @@ class TcpUart : public uart::UARTComponent, public Component {
   std::atomic<uint32_t> resolved_addr_{0};
 
   std::deque<uint8_t> rx_;
+  std::vector<uint8_t> tx_;
+  std::vector<uint8_t> tcp_buf_;
 };
 
 }  // namespace tcp_uart

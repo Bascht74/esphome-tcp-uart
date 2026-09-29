@@ -31,7 +31,7 @@ void TcpUart::dump_config() {
   } else {
     ESP_LOGCONFIG(TAG, "  Host: %s:%u", this->host_.c_str(), this->port_);
   }
-  ESP_LOGCONFIG(TAG, "  Baud rate is not applied to the socket");
+  ESP_LOGCONFIG(TAG, "  Protocol: %s", this->modbus_ ? "modbus" : "raw");
 }
 
 void TcpUart::on_shutdown() {
@@ -48,6 +48,9 @@ void TcpUart::close_sock_() {
   this->connecting_ = false;
   this->connected_ = false;
   this->rx_.clear();
+  this->tx_.clear();
+  this->tcp_buf_.clear();
+  this->response_pending_ = false;
 }
 
 void TcpUart::close_listen_() {
@@ -209,6 +212,11 @@ void TcpUart::read_socket_() {
     this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
     return;
   }
+  if (count > 0 && this->modbus_) {
+    this->tcp_buf_.insert(this->tcp_buf_.end(), tmp, tmp + count);
+    this->extract_frames_();
+    return;
+  }
   for (int i = 0; i < count && this->rx_.size() < 1024; i++) {
     this->rx_.push_back(tmp[i]);
   }
@@ -236,7 +244,99 @@ void TcpUart::loop() {
   this->read_socket_();
 }
 
-void TcpUart::write_array(const uint8_t *data, size_t len) { this->send_bytes_(data, len); }
+void TcpUart::push_rx_(uint8_t byte) {
+  if (this->rx_.size() < 512) {
+    this->rx_.push_back(byte);
+  }
+}
+
+static uint16_t crc16(const uint8_t *data, size_t len) {
+  uint16_t crc = 0xFFFF;
+  for (size_t i = 0; i < len; i++) {
+    crc ^= data[i];
+    for (int bit = 0; bit < 8; bit++) {
+      crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1;
+    }
+  }
+  return crc;
+}
+
+void TcpUart::extract_frames_() {
+  while (this->tcp_buf_.size() >= 7) {
+    if (this->server_ && this->response_pending_) {
+      return;
+    }
+    uint16_t txn = (this->tcp_buf_[0] << 8) | this->tcp_buf_[1];
+    uint16_t proto = (this->tcp_buf_[2] << 8) | this->tcp_buf_[3];
+    uint16_t length = (this->tcp_buf_[4] << 8) | this->tcp_buf_[5];
+    if (proto != 0 || length < 2 || length > 254) {
+      this->tcp_buf_.erase(this->tcp_buf_.begin());
+      continue;
+    }
+    if (this->tcp_buf_.size() < 6u + length) {
+      return;
+    }
+    if (!this->server_ && txn != this->txn_) {
+      ESP_LOGW(TAG, "Dropped transaction %u, expected %u", txn, this->txn_);
+      this->tcp_buf_.erase(this->tcp_buf_.begin(), this->tcp_buf_.begin() + 6 + length);
+      continue;
+    }
+    uint8_t unit = this->tcp_buf_[6];
+    const uint8_t *pdu = this->tcp_buf_.data() + 7;
+    size_t pdu_len = length - 1;
+    std::vector<uint8_t> rtu;
+    rtu.reserve(pdu_len + 3);
+    rtu.push_back(unit);
+    rtu.insert(rtu.end(), pdu, pdu + pdu_len);
+    uint16_t crc = crc16(rtu.data(), rtu.size());
+    rtu.push_back(crc & 0xFF);
+    rtu.push_back(crc >> 8);
+    for (uint8_t byte : rtu) {
+      this->push_rx_(byte);
+    }
+    if (this->server_) {
+      this->last_request_txn_ = txn;
+      this->response_pending_ = true;
+    }
+    this->tcp_buf_.erase(this->tcp_buf_.begin(), this->tcp_buf_.begin() + 6 + length);
+  }
+}
+
+void TcpUart::send_rtu_frame_() {
+  if (this->tx_.size() < 4 || !this->connected_) {
+    this->tx_.clear();
+    return;
+  }
+  const uint8_t *pdu = this->tx_.data() + 1;
+  size_t pdu_len = this->tx_.size() - 3;
+  uint8_t unit = this->tx_[0];
+  uint16_t txn = this->last_request_txn_;
+  if (!this->server_) {
+    this->txn_ = this->txn_ == 0xFFFF ? 1 : static_cast<uint16_t>(this->txn_ + 1);
+    txn = this->txn_;
+  }
+  uint8_t header[7];
+  header[0] = txn >> 8;
+  header[1] = txn & 0xFF;
+  header[2] = 0;
+  header[3] = 0;
+  uint16_t length = pdu_len + 1;
+  header[4] = length >> 8;
+  header[5] = length & 0xFF;
+  header[6] = unit;
+  this->send_bytes_(header, 7);
+  this->send_bytes_(pdu, pdu_len);
+  this->tx_.clear();
+  this->response_pending_ = false;
+}
+
+void TcpUart::write_array(const uint8_t *data, size_t len) {
+  if (this->modbus_) {
+    this->tx_.insert(this->tx_.end(), data, data + len);
+    return;
+  }
+  this->send_bytes_(data, len);
+}
 
 bool TcpUart::peek_byte(uint8_t *data) {
   if (this->rx_.empty()) {
@@ -259,7 +359,12 @@ bool TcpUart::read_array(uint8_t *data, size_t len) {
 
 size_t TcpUart::available() { return this->rx_.size(); }
 
-uart::UARTFlushResult TcpUart::flush() { return uart::UARTFlushResult::UART_FLUSH_RESULT_ASSUMED_SUCCESS; }
+uart::UARTFlushResult TcpUart::flush() {
+  if (this->modbus_) {
+    this->send_rtu_frame_();
+  }
+  return uart::UARTFlushResult::UART_FLUSH_RESULT_ASSUMED_SUCCESS;
+}
 
 }  // namespace tcp_uart
 }  // namespace esphome

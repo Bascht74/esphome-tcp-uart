@@ -6,8 +6,8 @@ Three TCP bridges for ESPHome 2026.8 or newer. License: MIT.
 
 | Component | What it does |
 |---|---|
-| `modbus_tcp_uart` | Modbus TCP (MBAP) on the socket, Modbus RTU toward ESPHome. No pins. |
-| `tcp_uart` | Raw bytes. Replaces a UART for a component with `uart_id`. No pins. |
+| `modbus_tcp_uart` | Same as `tcp_uart` with `protocol: modbus`. Kept so existing YAML still loads. |
+| `tcp_uart` | A UART with no pins. `protocol: raw` or `protocol: modbus`, client or server. |
 | `uart_tcp` | Hardware UART pins to TCP. `raw` copies bytes. `modbus` converts RTU and MBAP. |
 
 Neither component is a sensor platform. A sensor still uses `platform: modbus_controller` from ESPHome. These components only replace the UART the `modbus:` hub reads.
@@ -70,26 +70,34 @@ modbus_server:
 
 ## tcp_uart
 
-Replaces a UART for any component that takes `uart_id` and only reads and writes bytes. The far end must already speak raw TCP. This is not Modbus TCP, not an RS-232 level, and not a pin bridge: bytes from the ESP's own UART pins are not forwarded.
+Replaces a UART. It has no pins. `protocol` selects the bytes on the socket, for a client and for a server:
 
-Baud, parity, and stop bits of the real serial port are set on the far side. `baud_rate` here is stored so a component can check it. It is not sent and it does not clock bits.
+| `protocol` | Socket | What ESPHome reads and writes |
+|---|---|---|
+| `raw` | unchanged bytes | the same bytes |
+| `modbus` | Modbus TCP (MBAP) | Modbus RTU |
 
-`port` is required.
+`modbus_tcp_uart` is this component with `protocol: modbus` and port 502. New YAML can use either name.
 
 ```yaml
-external_components:
-  - source: github://Bascht74/esphome-modbus-tcp-uart
-    components: [tcp_uart]
-
 tcp_uart:
   - id: remote_serial
     role: client
     host: 192.0.2.20
     port: 5000
-    baud_rate: 9600
+    protocol: raw
+  - id: meter
+    role: client
+    host: 192.0.2.10
+    port: 502
+    protocol: modbus
+  - id: modbus_server
+    role: server
+    port: 502
+    protocol: modbus
 ```
 
-A gateway that takes a hardware `uart:` and publishes it on TCP is `uart_tcp` below. `tcp_uart` does not do that, so its `baud_rate` never clocks a pin.
+`port` is required. `baud_rate` defaults to 9600 and is not sent. On `protocol: modbus` the stock hub uses it only as a timer. This does not forward the ESP's own UART pins. That is `uart_tcp`.
 
 ## uart_tcp
 

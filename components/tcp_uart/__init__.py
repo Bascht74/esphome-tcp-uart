@@ -11,6 +11,7 @@ TcpUart = tcp_uart_ns.class_("TcpUart", uart.UARTComponent, cg.Component)
 
 CONF_HOST = "host"
 CONF_ROLE = "role"
+CONF_PROTOCOL = "protocol"
 CONF_RECONNECT_INTERVAL = "reconnect_interval"
 
 
@@ -27,6 +28,7 @@ CONFIG_SCHEMA = cv.All(
         {
             cv.GenerateID(): cv.declare_id(TcpUart),
             cv.Optional(CONF_ROLE, default="client"): cv.one_of("client", "server", lower=True),
+            cv.Optional(CONF_PROTOCOL, default="raw"): cv.one_of("raw", "modbus", lower=True),
             cv.Optional(CONF_HOST): cv.string,
             cv.Required(CONF_PORT): cv.port,
             cv.Optional(CONF_BAUD_RATE, default=9600): cv.int_range(min=1),
@@ -41,6 +43,7 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     cg.add(var.set_server(config[CONF_ROLE] == "server"))
+    cg.add(var.set_modbus(config[CONF_PROTOCOL] == "modbus"))
     cg.add(var.set_port(config[CONF_PORT]))
     cg.add(var.set_reconnect_interval(config[CONF_RECONNECT_INTERVAL]))
     if CONF_HOST in config:

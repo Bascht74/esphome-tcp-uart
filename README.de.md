@@ -6,8 +6,8 @@ Drei TCP-Brücken für ESPHome 2026.8 oder neuer. Lizenz: MIT.
 
 | Komponente | Was sie tut |
 |---|---|
-| `modbus_tcp_uart` | Modbus-TCP (MBAP) auf dem Socket, Modbus-RTU Richtung ESPHome. Keine Pins. |
-| `tcp_uart` | Rohe Bytes. Ersetzt eine UART für eine Komponente mit `uart_id`. Keine Pins. |
+| `modbus_tcp_uart` | Dasselbe wie `tcp_uart` mit `protocol: modbus`. Bleibt, damit vorhandene YAML weiter lädt. |
+| `tcp_uart` | Eine UART ohne Pins. `protocol: raw` oder `protocol: modbus`, Client oder Server. |
 | `uart_tcp` | Hardware-UART auf TCP. `raw` kopiert Bytes. `modbus` wandelt RTU und MBAP. |
 
 Keine der beiden ist eine Sensor-Plattform. Ein Sensor bleibt `platform: modbus_controller` aus ESPHome. Diese Komponenten ersetzen nur die UART, die der `modbus:`-Hub liest.
@@ -70,26 +70,34 @@ modbus_server:
 
 ## tcp_uart
 
-Ersetzt eine UART für jede Komponente, die `uart_id` nutzt und nur Bytes liest und schreibt. Die Gegenseite muss bereits rohes TCP sprechen. Das ist kein Modbus-TCP, kein RS-232-Pegel und keine Brücke von den Pins: Bytes der eigenen UART-Stiftleiste werden nicht weitergereicht.
+Ersetzt eine UART. Sie hat keine Pins. `protocol` wählt die Bytes auf dem Socket, beim Client und beim Server:
 
-Baud, Parität und Stoppbits der echten Schnittstelle stellt die Gegenseite ein. `baud_rate` liegt hier nur, damit eine Komponente den Wert prüfen kann. Sie wird nicht gesendet und taktet keine Bits.
+| `protocol` | Socket | Was ESPHome liest und schreibt |
+|---|---|---|
+| `raw` | unveränderte Bytes | dieselben Bytes |
+| `modbus` | Modbus-TCP (MBAP) | Modbus-RTU |
 
-`port` ist Pflicht.
+`modbus_tcp_uart` ist diese Komponente mit `protocol: modbus` und Port 502. Neue YAML kann beide Namen verwenden.
 
 ```yaml
-external_components:
-  - source: github://Bascht74/esphome-modbus-tcp-uart
-    components: [tcp_uart]
-
 tcp_uart:
   - id: remote_serial
     role: client
     host: 192.0.2.20
     port: 5000
-    baud_rate: 9600
+    protocol: raw
+  - id: meter
+    role: client
+    host: 192.0.2.10
+    port: 502
+    protocol: modbus
+  - id: modbus_server
+    role: server
+    port: 502
+    protocol: modbus
 ```
 
-Ein Gateway, das eine Hardware-`uart:` auf TCP legt, ist `uart_tcp` weiter unten. `tcp_uart` tut das nicht, deshalb taktet seine `baud_rate` keinen Pin.
+`port` ist Pflicht. `baud_rate` ist standardmäßig 9600 und wird nicht gesendet. Bei `protocol: modbus` nutzt der Hub sie nur als Timer. Die eigenen UART-Pins werden nicht weitergereicht. Das macht `uart_tcp`.
 
 ## uart_tcp
 
