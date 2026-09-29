@@ -28,7 +28,6 @@ external_components:
   - [Client](#uart_tcp-client)
   - [Server](#uart_tcp-server)
 - [Beide Rollen](#beide-rollen)
-- [Tests](#tests)
 
 ## tcp_uart
 
@@ -129,13 +128,3 @@ tcp_uart:
 ```
 
 `uart_tcp` funktioniert gleich: zwei Einträge unter `uart_tcp:`, jeder mit eigener `uart_id`.
-
-## Tests
-
-[tests/ci](tests/ci) prüft jede Datei in `tests/` mit ESPHome 2026.9.0. Dieselben Jobs laufen bei jedem Push auf `main` und bei jedem GitHub-Release. Eine Datei in `tests/invalid/` muss fehlschlagen, und das Protokoll muss den Satz aus der passenden `.expect`-Datei enthalten. [tests/compile.yaml](tests/compile.yaml) wird für den ESP32 kompiliert.
-
-```bash
-pip install "esphome==2026.9.0"
-./tests/ci
-esphome compile tests/compile.yaml
-```
