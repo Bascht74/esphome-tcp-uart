@@ -2,7 +2,10 @@ name: ESPHome
 
 on:
   push:
+    branches: [main]
   pull_request:
+  release:
+    types: [published]
 
 jobs:
   config:

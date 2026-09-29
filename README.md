@@ -105,7 +105,7 @@ uart_tcp:
 
 ## Tests
 
-[script/ci](script/ci) checks every file in `tests/` with ESPHome 2026.9.0. A file in `tests/invalid/` must fail, and the log must contain the sentence in the matching `.expect` file. [tests/compile.yaml](tests/compile.yaml) is compiled for ESP32.
+[script/ci](script/ci) checks every file in `tests/` with ESPHome 2026.9.0. The same jobs run on every push to `main` and on every GitHub release. A file in `tests/invalid/` must fail, and the log must contain the sentence in the matching `.expect` file. [tests/compile.yaml](tests/compile.yaml) is compiled for ESP32.
 
 ```bash
 pip install "esphome==2026.9.0"
