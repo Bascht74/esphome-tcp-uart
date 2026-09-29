@@ -7,7 +7,7 @@ Two UART-shaped TCP pipes for ESPHome 2026.8 or newer. License: MIT.
 | Component | Bytes on the socket |
 |---|---|
 | `modbus_tcp_uart` | Modbus TCP (MBAP). RTU on the UART side. |
-| `tcp_uart` | The same bytes, nothing added or removed. |
+| `tcp_uart` | The same bytes, nothing added or removed. Replaces a UART. Does not forward pins. |
 
 Neither component is a sensor platform. A sensor still uses `platform: modbus_controller` from ESPHome. These components only replace the UART the `modbus:` hub reads.
 
@@ -69,7 +69,11 @@ modbus_server:
 
 ## tcp_uart
 
-Raw pipe for a component that only reads and writes bytes (`uart_id`). Not for Modbus TCP, and not an RS-232 voltage level. The far end must speak raw TCP. Baud, parity, and stop bits are not sent across.
+Replaces a UART for any component that takes `uart_id` and only reads and writes bytes. The far end must already speak raw TCP. This is not Modbus TCP, not an RS-232 level, and not a pin bridge: bytes from the ESP's own UART pins are not forwarded.
+
+Baud, parity, and stop bits of the real serial port are set on the far side. `baud_rate` here is stored so a component can check it. It is not sent and it does not clock bits.
+
+`port` is required.
 
 ```yaml
 external_components:
@@ -84,7 +88,7 @@ tcp_uart:
     baud_rate: 9600
 ```
 
-`port` is required. `baud_rate` defaults to 9600 and is stored only so a component can check it.
+A gateway that takes a hardware `uart:` and publishes it on TCP is not this component. That would need a real `baud_rate` on those pins and a separate TCP `port`.
 
 ## Where baud rate matters
 
@@ -93,7 +97,7 @@ tcp_uart:
 - inter-frame gap = 3.5 character times, about 4 ms at 9600
 - estimated transmit time = frame length × bits per character / baud
 
-Both are timers inside the hub. They do not change the TCP stream. A real bus sets its own `baud_rate` on its own `uart:` entry. `tcp_uart` exposes `baud_rate` for the same check and does not use it for timing.
+Both are timers inside the hub. They do not change the TCP stream. A real bus sets its own `baud_rate` on its own `uart:` entry. `tcp_uart` stores `baud_rate` for the same kind of check and does not use it as a clock.
 
 ## Compatibility
 

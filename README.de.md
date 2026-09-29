@@ -7,7 +7,7 @@ Zwei TCP-Leitungen, die für ESPHome wie eine UART aussehen. ESPHome 2026.8 oder
 | Komponente | Bytes auf dem Socket |
 |---|---|
 | `modbus_tcp_uart` | Modbus-TCP (MBAP). Auf der UART-Seite RTU. |
-| `tcp_uart` | Dieselben Bytes, nichts dazwischen. |
+| `tcp_uart` | Dieselben Bytes, nichts dazwischen. Ersetzt eine UART. Leitet keine Pins weiter. |
 
 Keine der beiden ist eine Sensor-Plattform. Ein Sensor bleibt `platform: modbus_controller` aus ESPHome. Diese Komponenten ersetzen nur die UART, die der `modbus:`-Hub liest.
 
@@ -69,7 +69,11 @@ modbus_server:
 
 ## tcp_uart
 
-Rohe Leitung für eine Komponente, die nur Bytes liest und schreibt (`uart_id`). Kein Modbus-TCP und kein RS-232-Pegel. Die Gegenseite muss rohes TCP sprechen. Baud, Parität und Stoppbits gehen nicht über die Leitung.
+Ersetzt eine UART für jede Komponente, die `uart_id` nutzt und nur Bytes liest und schreibt. Die Gegenseite muss bereits rohes TCP sprechen. Das ist kein Modbus-TCP, kein RS-232-Pegel und keine Brücke von den Pins: Bytes der eigenen UART-Stiftleiste werden nicht weitergereicht.
+
+Baud, Parität und Stoppbits der echten Schnittstelle stellt die Gegenseite ein. `baud_rate` liegt hier nur, damit eine Komponente den Wert prüfen kann. Sie wird nicht gesendet und taktet keine Bits.
+
+`port` ist Pflicht.
 
 ```yaml
 external_components:
@@ -84,7 +88,7 @@ tcp_uart:
     baud_rate: 9600
 ```
 
-`port` ist Pflicht. `baud_rate` ist standardmäßig 9600 und wird nur gespeichert, damit eine Komponente den Wert prüfen kann.
+Ein Gateway, das eine Hardware-`uart:` auf TCP legt, ist diese Komponente nicht. Dafür brauchte es eine echte `baud_rate` an den Pins und einen eigenen TCP-`port`.
 
 ## Wo die Baudrate wirkt
 
@@ -93,7 +97,7 @@ tcp_uart:
 - Pause zwischen Frames = 3,5 Zeichenzeiten, bei 9600 etwa 4 ms
 - geschätzte Sendezeit = Framelänge × Bits je Zeichen / Baud
 
-Beides sind Timer im Hub. Sie ändern den TCP-Strom nicht. Ein echter Bus setzt `baud_rate` an seinem eigenen `uart:`-Eintrag. `tcp_uart` gibt `baud_rate` für dieselbe Prüfung frei und nutzt sie nicht als Takt.
+Beides sind Timer im Hub. Sie ändern den TCP-Strom nicht. Ein echter Bus setzt `baud_rate` an seinem eigenen `uart:`-Eintrag. `tcp_uart` speichert `baud_rate` für dieselbe Art von Prüfung und nutzt sie nicht als Takt.
 
 ## Kompatibilität
 
