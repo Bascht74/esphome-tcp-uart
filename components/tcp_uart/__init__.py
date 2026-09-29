@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, sensor, uart
+from esphome.components import binary_sensor, sensor, socket, uart
 from esphome.const import (
     CONF_BAUD_RATE,
     CONF_ID,
@@ -10,8 +10,8 @@ from esphome.const import (
     STATE_CLASS_TOTAL_INCREASING,
 )
 
-DEPENDENCIES = ["network"]
-AUTO_LOAD = ["uart", "binary_sensor", "sensor"]
+DEPENDENCIES = ["network", "socket"]
+AUTO_LOAD = ["uart", "binary_sensor", "sensor", "socket"]
 MULTI_CONF = True
 
 tcp_uart_ns = cg.esphome_ns.namespace("tcp_uart")
@@ -39,6 +39,11 @@ def _validate(config):
         raise cv.Invalid("idle_timeout is only used when role is server", path=[CONF_IDLE_TIMEOUT])
     if config[CONF_ROLE] == "client" and CONF_ALLOWED_HOSTS in config:
         raise cv.Invalid("allowed_hosts is only used when role is server", path=[CONF_ALLOWED_HOSTS])
+    if config[CONF_ROLE] == "server":
+        socket.consume_sockets(1, "tcp_uart", socket.SocketType.TCP_LISTEN)(config)
+        socket.consume_sockets(1, "tcp_uart")(config)
+    else:
+        socket.consume_sockets(1, "tcp_uart")(config)
     return config
 
 

@@ -1,0 +1,20 @@
+esphome:
+  name: host-tcp-uart
+  min_version: 2026.9.0
+
+host:
+
+logger:
+  level: INFO
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+tcp_uart:
+  - id: remote_serial
+    host: 127.0.0.1
+    port: 44502
+    protocol: raw
+    reconnect_interval: 1s

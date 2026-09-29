@@ -2,15 +2,19 @@
 
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/socket/socket.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/uart/uart_component.h"
 #include "esphome/core/component.h"
 
+#ifdef USE_ESP32
 #include "lwip/ip_addr.h"
+#endif
 
 #include <atomic>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -48,18 +52,21 @@ class UartTcp : public Component, public uart::UARTDevice, public uart::UARTComp
   size_t available() override;
   uart::UARTFlushResult flush() override;
   bool is_connected() override { return true; }
+#if defined(USE_ESP8266) || defined(USE_ESP32)
   void load_settings(bool dump_config) override {}
+#endif
 
  protected:
   void check_logger_conflict() override {}
   void close_sock_();
   void close_listen_();
   void try_resolve_();
+  bool ip_ready_();
   void try_connect_();
   void try_listen_();
   void accept_client_();
   void read_socket_();
-  void apply_socket_options_(int fd);
+  void apply_socket_options_(socket::Socket *sock);
   void send_all_(const uint8_t *data, size_t len);
   void pump_raw_();
   void pump_modbus_();
@@ -74,7 +81,7 @@ class UartTcp : public Component, public uart::UARTDevice, public uart::UARTComp
   void note_drop_();
   void note_io_();
   void check_idle_();
-  bool peer_allowed_(int fd);
+  bool peer_allowed_(const struct sockaddr *addr);
   void send_tap_(const uint8_t *data, size_t len);
   void try_listen_tap_();
   void accept_tap_();
@@ -84,16 +91,18 @@ class UartTcp : public Component, public uart::UARTDevice, public uart::UARTComp
   void start_local_();
   void push_local_(const uint8_t *data, size_t len);
   uint32_t frame_gap_us_() const;
+#ifdef USE_ESP32
   static void dns_found_(const char *name, const ip_addr_t *addr, void *arg);
+#endif
 
   std::string host_;
   uint16_t port_{0};
   uint16_t tap_port_{0};
   bool server_{false};
   bool modbus_{false};
-  int sock_{-1};
-  int listen_{-1};
-  int listen_tap_{-1};
+  std::unique_ptr<socket::Socket> sock_;
+  std::unique_ptr<socket::ListenSocket> listen_;
+  std::unique_ptr<socket::ListenSocket> listen_tap_;
   bool connecting_{false};
   bool connected_{false};
   uint32_t next_connect_ms_{0};
@@ -120,12 +129,13 @@ class UartTcp : public Component, public uart::UARTDevice, public uart::UARTComp
   std::atomic<bool> resolve_failed_{false};
   std::atomic<bool> have_addr_{false};
   std::atomic<uint32_t> resolved_addr_{0};
+  std::string resolved_ip_;
 
   std::vector<uint8_t> tcp_buf_;
   std::vector<uint8_t> uart_buf_;
   std::vector<uint8_t> local_tx_;
   std::deque<uint8_t> local_rx_;
-  std::vector<int> taps_;
+  std::vector<std::unique_ptr<socket::Socket>> taps_;
   std::vector<uint32_t> allowed_;
 };
 

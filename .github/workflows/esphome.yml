@@ -20,6 +20,8 @@ jobs:
         run: pip install "esphome==2026.9.0"
       - name: Validate configs
         run: ./tests/ci
+      - name: Host connection
+        run: ./tests/host-run
 
   compile:
     name: Compile against ESPHome 2026.9.0

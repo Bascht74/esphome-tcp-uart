@@ -5,16 +5,16 @@
 #include <cerrno>
 #include <cstring>
 
-#include <fcntl.h>
-#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <netinet/tcp.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
+#ifdef USE_ESP32
 #include "lwip/dns.h"
 #include "lwip/ip4_addr.h"
-#include "lwip/ip_addr.h"
-#include "lwip/ip4_addr.h"
+#else
+#include <arpa/inet.h>
+#include <netdb.h>
+#endif
 
 namespace esphome {
 namespace tcp_uart {
@@ -65,11 +65,11 @@ void TcpUart::on_shutdown() {
 
 void TcpUart::close_sock_() {
   bool was = this->connected_;
-  if (this->sock_ >= 0) {
-    ::shutdown(this->sock_, SHUT_RDWR);
-    ::close(this->sock_);
+  if (this->sock_ != nullptr) {
+    this->sock_->shutdown(SHUT_RDWR);
+    this->sock_->close();
+    this->sock_.reset();
   }
-  this->sock_ = -1;
   this->connecting_ = false;
   this->set_link_up_(false);
   this->rx_.clear();
@@ -81,27 +81,24 @@ void TcpUart::close_sock_() {
   }
 }
 
-void TcpUart::close_listen_() {
-  if (this->listen_ >= 0) {
-    ::close(this->listen_);
-  }
-  this->listen_ = -1;
-}
+void TcpUart::close_listen_() { this->listen_.reset(); }
 
-void TcpUart::apply_socket_options_(int fd) {
+void TcpUart::apply_socket_options_(socket::Socket *sock) {
   int yes = 1;
-  setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes));
-  setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &yes, sizeof(yes));
+  sock->setblocking(false);
+  sock->setsockopt(IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes));
+  sock->setsockopt(SOL_SOCKET, SO_KEEPALIVE, &yes, sizeof(yes));
 #ifdef TCP_KEEPIDLE
   int idle = 30;
   int interval = 10;
   int count = 3;
-  setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
-  setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(interval));
-  setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &count, sizeof(count));
+  sock->setsockopt(IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
+  sock->setsockopt(IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(interval));
+  sock->setsockopt(IPPROTO_TCP, TCP_KEEPCNT, &count, sizeof(count));
 #endif
 }
 
+#ifdef USE_ESP32
 void TcpUart::dns_found_(const char *name, const ip_addr_t *addr, void *arg) {
   auto *self = static_cast<TcpUart *>(arg);
   if (addr != nullptr && IP_IS_V4(addr)) {
@@ -113,17 +110,20 @@ void TcpUart::dns_found_(const char *name, const ip_addr_t *addr, void *arg) {
   }
   self->resolving_.store(false);
 }
+#endif
 
 void TcpUart::try_resolve_() {
   if (this->have_addr_.load() || this->resolving_.load()) {
     return;
   }
-  ip4_addr_t literal;
-  if (ip4addr_aton(this->host_.c_str(), &literal)) {
-    this->resolved_addr_.store(ip4_addr_get_u32(&literal));
+  struct sockaddr_storage literal;
+  if (socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&literal), sizeof(literal), this->host_, this->port_) !=
+      0) {
+    this->resolved_ip_ = this->host_;
     this->have_addr_.store(true);
     return;
   }
+#ifdef USE_ESP32
   ip_addr_t cached;
   err_t err = dns_gethostbyname(this->host_.c_str(), &cached, &TcpUart::dns_found_, this);
   if (err == ERR_OK && IP_IS_V4(&cached)) {
@@ -135,11 +135,46 @@ void TcpUart::try_resolve_() {
     this->resolving_.store(true);
     return;
   }
+#else
+  struct addrinfo hints {};
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  struct addrinfo *res = nullptr;
+  if (getaddrinfo(this->host_.c_str(), nullptr, &hints, &res) == 0 && res != nullptr) {
+    char buf[INET_ADDRSTRLEN];
+    auto *in = reinterpret_cast<struct sockaddr_in *>(res->ai_addr);
+    if (inet_ntop(AF_INET, &in->sin_addr, buf, sizeof(buf)) != nullptr) {
+      this->resolved_ip_ = buf;
+      this->have_addr_.store(true);
+    }
+    freeaddrinfo(res);
+    if (this->have_addr_.load()) {
+      return;
+    }
+  }
+#endif
   this->resolve_failed_.store(true);
 }
 
+bool TcpUart::ip_ready_() {
+  if (!this->resolved_ip_.empty()) {
+    return true;
+  }
+  if (!this->have_addr_.load()) {
+    return false;
+  }
+  struct in_addr addr {};
+  addr.s_addr = this->resolved_addr_.load();
+  char buf[INET_ADDRSTRLEN];
+  if (inet_ntop(AF_INET, &addr, buf, sizeof(buf)) == nullptr) {
+    return false;
+  }
+  this->resolved_ip_ = buf;
+  return true;
+}
+
 void TcpUart::try_connect_() {
-  if (this->sock_ >= 0 || millis() < this->next_connect_ms_) {
+  if (this->sock_ != nullptr || millis() < this->next_connect_ms_) {
     return;
   }
   if (this->resolve_failed_.exchange(false)) {
@@ -147,87 +182,84 @@ void TcpUart::try_connect_() {
     return;
   }
   this->try_resolve_();
-  if (!this->have_addr_.load()) {
+  if (!this->ip_ready_()) {
     return;
   }
-  int fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (fd < 0) {
+  struct sockaddr_storage dest;
+  socklen_t dest_len =
+      socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&dest), sizeof(dest), this->resolved_ip_, this->port_);
+  if (dest_len == 0) {
     this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
     return;
   }
-  int flags = fcntl(fd, F_GETFL, 0);
-  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-  this->apply_socket_options_(fd);
-  struct sockaddr_in dest {};
-  dest.sin_family = AF_INET;
-  dest.sin_port = htons(this->port_);
-  dest.sin_addr.s_addr = this->resolved_addr_.load();
-  int rc = ::connect(fd, reinterpret_cast<struct sockaddr *>(&dest), sizeof(dest));
+  this->sock_ = socket::socket(dest.ss_family, SOCK_STREAM, IPPROTO_TCP);
+  if (this->sock_ == nullptr) {
+    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    return;
+  }
+  this->apply_socket_options_(this->sock_.get());
+  int rc = this->sock_->connect(reinterpret_cast<struct sockaddr *>(&dest), dest_len);
   if (rc == 0 || errno == EINPROGRESS) {
-    this->sock_ = fd;
     this->connecting_ = rc != 0;
     this->set_link_up_(rc == 0);
     return;
   }
-  ::close(fd);
+  this->sock_.reset();
   this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
 }
 
 void TcpUart::try_listen_() {
-  if (this->listen_ >= 0 || millis() < this->next_connect_ms_) {
+  if (this->listen_ != nullptr || millis() < this->next_connect_ms_) {
     return;
   }
-  int fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (fd < 0) {
+  this->listen_ = socket::socket_ip_loop_monitored(SOCK_STREAM, IPPROTO_TCP);
+  if (this->listen_ == nullptr) {
     this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
     return;
   }
   int yes = 1;
-  setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
-  int flags = fcntl(fd, F_GETFL, 0);
-  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-  struct sockaddr_in local {};
-  local.sin_family = AF_INET;
-  local.sin_port = htons(this->port_);
-  local.sin_addr.s_addr = INADDR_ANY;
-  if (bind(fd, reinterpret_cast<struct sockaddr *>(&local), sizeof(local)) != 0 || listen(fd, 1) != 0) {
+  this->listen_->setsockopt(SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+  this->listen_->setblocking(false);
+  struct sockaddr_storage local;
+  socklen_t local_len = socket::set_sockaddr_any(reinterpret_cast<struct sockaddr *>(&local), sizeof(local), this->port_);
+  if (local_len == 0 || this->listen_->bind(reinterpret_cast<struct sockaddr *>(&local), local_len) != 0 ||
+      this->listen_->listen(1) != 0) {
     ESP_LOGW(TAG, "Listen on %u failed", this->port_);
-    ::close(fd);
+    this->listen_.reset();
     this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
     return;
   }
-  this->listen_ = fd;
   ESP_LOGI(TAG, "Listening on %u", this->port_);
 }
 
 void TcpUart::accept_client_() {
-  if (this->listen_ < 0 || this->sock_ >= 0) {
+  if (this->listen_ == nullptr || this->sock_ != nullptr) {
     return;
   }
-  int fd = ::accept(this->listen_, nullptr, nullptr);
-  if (fd < 0) {
+  struct sockaddr_storage peer;
+  socklen_t peer_len = sizeof(peer);
+  auto client = this->listen_->accept(reinterpret_cast<struct sockaddr *>(&peer), &peer_len);
+  if (client == nullptr) {
     return;
   }
-  if (!this->peer_allowed_(fd)) {
-    ::close(fd);
+  if (!this->peer_allowed_(reinterpret_cast<struct sockaddr *>(&peer))) {
+    client->close();
     return;
   }
-  int flags = fcntl(fd, F_GETFL, 0);
-  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-  this->apply_socket_options_(fd);
-  this->sock_ = fd;
+  this->apply_socket_options_(client.get());
+  this->sock_ = std::move(client);
   this->set_link_up_(true);
   ESP_LOGI(TAG, "Client connected");
 }
 
 void TcpUart::read_socket_() {
-  if (this->sock_ < 0) {
+  if (this->sock_ == nullptr) {
     return;
   }
   if (this->connecting_) {
     int err = 0;
     socklen_t len = sizeof(err);
-    if (getsockopt(this->sock_, SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0) {
+    if (this->sock_->getsockopt(SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0) {
       this->close_sock_();
       this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
       return;
@@ -237,7 +269,7 @@ void TcpUart::read_socket_() {
     ESP_LOGI(TAG, "Connected to %s:%u", this->host_.c_str(), this->port_);
   }
   uint8_t tmp[128];
-  int count = ::recv(this->sock_, tmp, sizeof(tmp), 0);
+  ssize_t count = this->sock_->read(tmp, sizeof(tmp));
   if (count == 0 || (count < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
     ESP_LOGW(TAG, "Connection lost");
     this->close_sock_();
@@ -250,7 +282,7 @@ void TcpUart::read_socket_() {
     this->extract_frames_();
     return;
   }
-  for (int i = 0; i < count && this->rx_.size() < 1024; i++) {
+  for (ssize_t i = 0; i < count && this->rx_.size() < 1024; i++) {
     this->rx_.push_back(tmp[i]);
   }
   if (count > 0) {
@@ -259,15 +291,18 @@ void TcpUart::read_socket_() {
 }
 
 void TcpUart::send_bytes_(const uint8_t *data, size_t len) {
-  if (!this->connected_ || len == 0) {
+  if (!this->connected_ || this->sock_ == nullptr || len == 0) {
     return;
   }
   size_t sent_total = 0;
   while (sent_total < len) {
-    int sent = ::send(this->sock_, data + sent_total, len - sent_total, 0);
+    ssize_t sent = this->sock_->write(data + sent_total, len - sent_total);
     if (sent > 0) {
       sent_total += static_cast<size_t>(sent);
       continue;
+    }
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      return;
     }
     ESP_LOGW(TAG, "Send failed");
     this->close_sock_();
@@ -303,25 +338,27 @@ void TcpUart::check_idle_() {
 }
 
 void TcpUart::add_allowed(const std::string &host) {
-  ip_addr_t addr;
-  if (!ipaddr_aton(host.c_str(), &addr)) {
+  struct sockaddr_storage addr;
+  if (socket::set_sockaddr(reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr), host, 0) == 0) {
     ESP_LOGW(TAG, "Ignored allowed host %s", host.c_str());
     return;
   }
-  this->allowed_.push_back(ip_2_ip4(&addr)->addr);
+  if (addr.ss_family != AF_INET) {
+    return;
+  }
+  this->allowed_.push_back(reinterpret_cast<struct sockaddr_in *>(&addr)->sin_addr.s_addr);
 }
 
-bool TcpUart::peer_allowed_(int fd) {
+bool TcpUart::peer_allowed_(const struct sockaddr *addr) {
   if (this->allowed_.empty()) {
     return true;
   }
-  struct sockaddr_in addr {};
-  socklen_t len = sizeof(addr);
-  if (::getpeername(fd, reinterpret_cast<struct sockaddr *>(&addr), &len) != 0) {
+  if (addr == nullptr || addr->sa_family != AF_INET) {
     return false;
   }
+  uint32_t ip = reinterpret_cast<const struct sockaddr_in *>(addr)->sin_addr.s_addr;
   for (uint32_t allowed : this->allowed_) {
-    if (allowed == addr.sin_addr.s_addr) {
+    if (allowed == ip) {
       return true;
     }
   }

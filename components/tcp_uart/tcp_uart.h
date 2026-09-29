@@ -1,15 +1,19 @@
 #pragma once
 
-#include "esphome/core/component.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/socket/socket.h"
 #include "esphome/components/uart/uart_component.h"
+#include "esphome/core/component.h"
 
+#ifdef USE_ESP32
 #include "lwip/ip_addr.h"
+#endif
 
 #include <atomic>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -42,8 +46,10 @@ class TcpUart : public uart::UARTComponent, public Component {
   bool read_array(uint8_t *data, size_t len) override;
   size_t available() override;
   uart::UARTFlushResult flush() override;
-  bool is_connected() override { return this->sock_ >= 0 && this->connected_; }
+  bool is_connected() override { return this->sock_ != nullptr && this->connected_; }
+#if defined(USE_ESP8266) || defined(USE_ESP32)
   void load_settings(bool dump_config) override {}
+#endif
 
  protected:
   void check_logger_conflict() override {}
@@ -51,6 +57,7 @@ class TcpUart : public uart::UARTComponent, public Component {
   void close_sock_();
   void close_listen_();
   void try_resolve_();
+  bool ip_ready_();
   void try_connect_();
   void try_listen_();
   void accept_client_();
@@ -59,21 +66,23 @@ class TcpUart : public uart::UARTComponent, public Component {
   void send_rtu_frame_();
   void push_rx_(uint8_t byte);
   void send_bytes_(const uint8_t *data, size_t len);
-  void apply_socket_options_(int fd);
+  void apply_socket_options_(socket::Socket *sock);
   void set_link_up_(bool up);
   void publish_link_();
   void note_drop_();
   void note_io_();
   void check_idle_();
-  bool peer_allowed_(int fd);
+  bool peer_allowed_(const struct sockaddr *addr);
+#ifdef USE_ESP32
   static void dns_found_(const char *name, const ip_addr_t *addr, void *arg);
+#endif
 
   std::string host_;
   uint16_t port_{0};
   bool server_{false};
   bool modbus_{false};
-  int sock_{-1};
-  int listen_{-1};
+  std::unique_ptr<socket::Socket> sock_;
+  std::unique_ptr<socket::ListenSocket> listen_;
   bool connecting_{false};
   bool connected_{false};
   uint32_t next_connect_ms_{0};
@@ -92,6 +101,7 @@ class TcpUart : public uart::UARTComponent, public Component {
   std::atomic<bool> resolve_failed_{false};
   std::atomic<bool> have_addr_{false};
   std::atomic<uint32_t> resolved_addr_{0};
+  std::string resolved_ip_;
 
   std::deque<uint8_t> rx_;
   std::vector<uint8_t> tx_;

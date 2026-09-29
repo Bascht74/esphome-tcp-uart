@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Compile the host target and check that a client socket connects.
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+
+if ! command -v esphome >/dev/null 2>&1; then
+  echo "esphome is not installed. pip install 'esphome==2026.9.0'" >&2
+  exit 1
+fi
+
+esphome compile tests/host-tcp-uart.yaml
+bin="$root/tests/.esphome/build/host-tcp-uart/.pioenvs/host-tcp-uart/program"
+if [[ ! -x "$bin" ]]; then
+  echo "host binary was not built" >&2
+  exit 1
+fi
+
+python3 "$root/tests/host_peer.py" &
+peer=$!
+sleep 0.3
+"$bin" >/tmp/esphome-host.log 2>&1 &
+firmware=$!
+
+if wait "$peer"; then
+  kill "$firmware" >/dev/null 2>&1 || true
+  wait "$firmware" >/dev/null 2>&1 || true
+  echo "host client connected"
+else
+  kill "$firmware" >/dev/null 2>&1 || true
+  wait "$firmware" >/dev/null 2>&1 || true
+  echo "host client did not connect" >&2
+  cat /tmp/esphome-host.log >&2
+  exit 1
+fi

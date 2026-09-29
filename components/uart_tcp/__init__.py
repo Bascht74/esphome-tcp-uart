@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, sensor, uart
+from esphome.components import binary_sensor, sensor, socket, uart
 from esphome.const import (
     CONF_ID,
     CONF_PORT,
@@ -9,8 +9,8 @@ from esphome.const import (
     STATE_CLASS_TOTAL_INCREASING,
 )
 
-DEPENDENCIES = ["network", "uart"]
-AUTO_LOAD = ["binary_sensor", "sensor"]
+DEPENDENCIES = ["network", "socket", "uart"]
+AUTO_LOAD = ["binary_sensor", "sensor", "socket"]
 MULTI_CONF = True
 
 uart_tcp_ns = cg.esphome_ns.namespace("uart_tcp")
@@ -42,6 +42,13 @@ def _validate(config):
         raise cv.Invalid("allowed_hosts is only used when role is server", path=[CONF_ALLOWED_HOSTS])
     if config[CONF_ROLE] != "server" and CONF_TAP_PORT in config:
         raise cv.Invalid("tap_port is only used when role is server", path=[CONF_TAP_PORT])
+    if config[CONF_ROLE] == "server":
+        listens = 2 if CONF_TAP_PORT in config else 1
+        clients = 3 if CONF_TAP_PORT in config else 1
+        socket.consume_sockets(listens, "uart_tcp", socket.SocketType.TCP_LISTEN)(config)
+        socket.consume_sockets(clients, "uart_tcp")(config)
+    else:
+        socket.consume_sockets(1, "uart_tcp")(config)
     return config
 
 
