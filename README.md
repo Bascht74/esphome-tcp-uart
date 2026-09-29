@@ -126,7 +126,7 @@ Both are timers inside the hub. They do not change the TCP stream. A real bus se
 
 ## Tests
 
-GitHub Actions installs ESPHome 2026.9.0 and runs [script/ci](script/ci). That validates every file in `tests/` with `esphome config`. Files in `tests/invalid/` must be rejected. A second job compiles [tests/compile.yaml](tests/compile.yaml) for ESP32 (ESP-IDF), which builds `tcp_uart` in both protocols and `uart_tcp`.
+GitHub Actions installs ESPHome 2026.9.0 and runs [script/ci](script/ci). That validates every file in `tests/` with `esphome config`. Each file in `tests/invalid/` must be rejected, and the output must contain the sentence in the matching `.expect` file. A failure for some other reason does not count. A second job compiles [tests/compile.yaml](tests/compile.yaml) for ESP32 (ESP-IDF), which builds `tcp_uart` in both protocols and `uart_tcp`.
 
 ```bash
 pip install "esphome==2026.9.0"

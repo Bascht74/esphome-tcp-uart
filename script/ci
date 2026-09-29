@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Validate every fixture with the installed ESPHome. Invalid fixtures must fail.
+# Validate every fixture with the installed ESPHome.
+# Invalid fixtures must fail and must report the sentence in the matching .expect file.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -16,22 +17,38 @@ shopt -s nullglob
 valid=("$root"/tests/*.yaml)
 invalid=("$root"/tests/invalid/*.yaml)
 
-if [[ ${#valid[@]} -eq 0 ]]; then
-  echo "no valid fixtures" >&2
+if [[ ${#valid[@]} -eq 0 || ${#invalid[@]} -eq 0 ]]; then
+  echo "need both valid configs and counter-examples" >&2
   exit 1
 fi
 
 for file in "${valid[@]}"; do
   echo "== config $file"
-  esphome config "$file" >/tmp/esphome-config.out
+  if ! esphome config "$file" >/tmp/esphome-config.out 2>&1; then
+    echo "valid config was rejected: $file" >&2
+    cat /tmp/esphome-config.out >&2
+    exit 1
+  fi
 done
 
 for file in "${invalid[@]}"; do
+  expect="${file%.yaml}.expect"
+  if [[ ! -f "$expect" ]]; then
+    echo "missing expected report: $expect" >&2
+    exit 1
+  fi
+  phrase="$(tr -d '\n' < "$expect")"
   echo "== expect invalid $file"
   if esphome config "$file" >/tmp/esphome-config.out 2>&1; then
     echo "expected this config to fail: $file" >&2
     exit 1
   fi
+  if ! grep -F -- "$phrase" /tmp/esphome-config.out >/dev/null; then
+    echo "config failed, but did not report: $phrase" >&2
+    cat /tmp/esphome-config.out >&2
+    exit 1
+  fi
+  echo "   reported: $phrase"
 done
 
 echo "config tests passed (${#valid[@]} valid, ${#invalid[@]} invalid)"
