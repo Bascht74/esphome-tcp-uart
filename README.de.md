@@ -17,7 +17,7 @@ external_components:
     components: [tcp_uart, uart_tcp]
 ```
 
-Wähle Client oder Server. Beides in einem Eintrag geht nicht.
+Ein Eintrag ist Client oder Server. Wer beides braucht, schreibt einen zweiten Eintrag.
 
 ## Client
 

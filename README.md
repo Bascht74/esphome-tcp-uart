@@ -17,7 +17,7 @@ external_components:
     components: [tcp_uart, uart_tcp]
 ```
 
-Pick Client or Server. Do not mix the two in one entry.
+One entry is a client or a server. To use both, add a second entry.
 
 ## Client
 
