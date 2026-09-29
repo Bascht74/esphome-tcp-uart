@@ -1,12 +1,19 @@
 # esphome-modbus-tcp-uart
 
-Ein Modbus-TCP-Socket, der sich für den normalen ESPHome-`modbus`-Hub wie eine UART verhält. ESPHome 2026.8 oder neuer. Lizenz: MIT.
+Zwei TCP-Leitungen, die für ESPHome wie eine UART aussehen. ESPHome 2026.8 oder neuer. Lizenz: MIT.
 
 [English](README.md)
 
-Die Komponente kopiert `modbus_controller` nicht. Sie packt RTU-Frames in MBAP und zurück. Client und Server gehen denselben Weg.
+| Komponente | Bytes auf dem Socket |
+|---|---|
+| `modbus_tcp_uart` | Modbus-TCP (MBAP). Auf der UART-Seite RTU. |
+| `tcp_uart` | Dieselben Bytes, nichts dazwischen. |
 
-## Client
+Keine der beiden ist eine Sensor-Plattform. Ein Sensor bleibt `platform: modbus_controller` aus ESPHome. Diese Komponenten ersetzen nur die UART, die der `modbus:`-Hub liest.
+
+## modbus_tcp_uart
+
+Ein Eintrag ist entweder Client oder Server. Beides gleichzeitig sind zwei Einträge.
 
 ```yaml
 external_components:
@@ -17,7 +24,6 @@ modbus_tcp_uart:
   - id: tcp_link
     host: 192.0.2.10
     port: 502
-    reconnect_interval: 5s
 
 modbus:
   - id: tcp_bus
@@ -32,13 +38,9 @@ modbus_controller:
     update_interval: 1s
 ```
 
-Mehrere `modbus_controller` dürfen sich eine `modbus_id` teilen. Der Hub sendet eine Anfrage nach der anderen und gibt die Antwort nur an das Gerät zurück, das sie gestellt hat.
+Mehrere Controller dürfen sich eine `modbus_id` teilen. Der Hub hält eine Anfrage in der Luft und gibt die Antwort an den Auftraggeber zurück. Diese Komponente hat keine eigene Geräteliste.
 
-`send_wait_time` bleibt unter `modbus`. Das ist der Timer des Original-Hubs. Sensoren nutzen `platform: modbus_controller`.
-
-## Server
-
-Gleichzeitig nur ein TCP-Client. Der normale `modbus_server` spricht auf dieser UART RTU.
+Server, gleichzeitig ein TCP-Client. Dahinter spricht der normale `modbus_server` RTU. Ein echter RTU-Bus bleibt an seiner Hardware-UART.
 
 ```yaml
 modbus_tcp_uart:
@@ -56,8 +58,6 @@ modbus_server:
     address: 1
 ```
 
-## Schlüssel
-
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
 | `role` | `client` | `client` wählt `host`. `server` lauscht. |
@@ -65,12 +65,38 @@ modbus_server:
 | `port` | 502 | Zielport oder lokaler Lauschport. |
 | `reconnect_interval` | 5s | Pause nach Fehlwahl, Abbruch oder fehlgeschlagenem Lauschen. |
 
-Eine numerische Adresse blockiert nicht. Ein Hostname läuft über den lwIP-DNS-Callback. Der Socket wird in `on_shutdown` geschlossen. TCP-Keepalive prüft nach 30 s Ruhe.
+`send_wait_time` bleibt unter `modbus`.
 
-## Was nicht mitkopiert wird
+## tcp_uart
 
-`skip_updates`, `force_new_range` und `command_throttle` akzeptiert der Original-Controller in 2026.9 noch. Sie ändern das Pollen nicht mehr: `skip_updates` wird ignoriert, `force_new_range` wird nach `reuse_previous_range` umgeschrieben, `command_throttle` verweist auf `turnaround_time` unter `modbus`. Entfernt werden sie 2027.2 und 2027.3, nicht 2026.9.
+Rohe Leitung für eine Komponente, die nur Bytes liest und schreibt (`uart_id`). Kein Modbus-TCP und kein RS-232-Pegel. Die Gegenseite muss rohes TCP sprechen. Baud, Parität und Stoppbits gehen nicht über die Leitung.
+
+```yaml
+external_components:
+  - source: github://Bascht74/esphome-modbus-tcp-uart
+    components: [tcp_uart]
+
+tcp_uart:
+  - id: remote_serial
+    role: client
+    host: 192.0.2.20
+    port: 5000
+    baud_rate: 9600
+```
+
+`port` ist Pflicht. `baud_rate` ist standardmäßig 9600 und wird nur gespeichert, damit eine Komponente den Wert prüfen kann.
+
+## Wo die Baudrate wirkt
+
+`modbus_tcp_uart` speichert 9600 8N1 und taktet keine Bits. Der Hub liest die Zahl in `Modbus::setup()`:
+
+- Pause zwischen Frames = 3,5 Zeichenzeiten, bei 9600 etwa 4 ms
+- geschätzte Sendezeit = Framelänge × Bits je Zeichen / Baud
+
+Beides sind Timer im Hub. Sie ändern den TCP-Strom nicht. Ein echter Bus setzt `baud_rate` an seinem eigenen `uart:`-Eintrag. `tcp_uart` gibt `baud_rate` für dieselbe Prüfung frei und nutzt sie nicht als Takt.
 
 ## Kompatibilität
 
-Der C++-Teil implementiert nur die UART-Byte-Methoden (`write_array`, `peek_byte`, `read_array`, `available`, `flush`, `load_settings`, `check_logger_conflict`). Er ruft keine Interna von `modbus_controller` auf, deshalb trifft ihn das Entfernen der Helper-Shims in 2026.10 nicht. Er bricht, wenn `UARTComponent` eine neue pure virtual Methode bekommt. Dieser Satz ist in 2026.9.0 und im aktuellen `dev` gleich.
+Beide Komponenten implementieren nur die UART-Byte-Methoden. Sie rufen keine Interna von `modbus_controller` auf. Das Entfernen der Helper-Shims in 2026.10 trifft sie nicht. Sie brechen, wenn `UARTComponent` eine neue pure virtual Methode bekommt. Dieser Satz ist in 2026.9.0 und im aktuellen `dev` gleich.
+
+`skip_updates`, `force_new_range` und `command_throttle` akzeptiert der Controller in 2026.9 noch. Sie ändern das Pollen nicht mehr. Entfernt werden sie 2027.2 und 2027.3.

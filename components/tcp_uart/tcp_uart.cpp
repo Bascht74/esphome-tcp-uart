@@ -1,0 +1,265 @@
+#include "tcp_uart.h"
+
+#include "esphome/core/log.h"
+
+#include <cerrno>
+#include <cstring>
+
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include "lwip/dns.h"
+#include "lwip/ip4_addr.h"
+
+namespace esphome {
+namespace tcp_uart {
+
+static const char *const TAG = "tcp_uart";
+
+float TcpUart::get_setup_priority() const { return setup_priority::AFTER_WIFI; }
+
+void TcpUart::setup() {}
+
+void TcpUart::dump_config() {
+  ESP_LOGCONFIG(TAG, "TCP UART:");
+  ESP_LOGCONFIG(TAG, "  Role: %s", this->server_ ? "server" : "client");
+  if (this->server_) {
+    ESP_LOGCONFIG(TAG, "  Listen: %u", this->port_);
+  } else {
+    ESP_LOGCONFIG(TAG, "  Host: %s:%u", this->host_.c_str(), this->port_);
+  }
+  ESP_LOGCONFIG(TAG, "  Baud rate is not applied to the socket");
+}
+
+void TcpUart::on_shutdown() {
+  this->close_sock_();
+  this->close_listen_();
+}
+
+void TcpUart::close_sock_() {
+  if (this->sock_ >= 0) {
+    ::shutdown(this->sock_, SHUT_RDWR);
+    ::close(this->sock_);
+  }
+  this->sock_ = -1;
+  this->connecting_ = false;
+  this->connected_ = false;
+  this->rx_.clear();
+}
+
+void TcpUart::close_listen_() {
+  if (this->listen_ >= 0) {
+    ::close(this->listen_);
+  }
+  this->listen_ = -1;
+}
+
+void TcpUart::apply_socket_options_(int fd) {
+  int yes = 1;
+  setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes));
+  setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &yes, sizeof(yes));
+#ifdef TCP_KEEPIDLE
+  int idle = 30;
+  int interval = 10;
+  int count = 3;
+  setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
+  setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(interval));
+  setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &count, sizeof(count));
+#endif
+}
+
+void TcpUart::dns_found_(const char *name, const ip_addr_t *addr, void *arg) {
+  auto *self = static_cast<TcpUart *>(arg);
+  if (addr != nullptr && IP_IS_V4(addr)) {
+    self->resolved_addr_.store(ip4_addr_get_u32(ip_2_ip4(addr)));
+    self->have_addr_.store(true);
+  } else {
+    self->resolve_failed_.store(true);
+    ESP_LOGW(TAG, "DNS failed for %s", name);
+  }
+  self->resolving_.store(false);
+}
+
+void TcpUart::try_resolve_() {
+  if (this->have_addr_.load() || this->resolving_.load()) {
+    return;
+  }
+  ip4_addr_t literal;
+  if (ip4addr_aton(this->host_.c_str(), &literal)) {
+    this->resolved_addr_.store(ip4_addr_get_u32(&literal));
+    this->have_addr_.store(true);
+    return;
+  }
+  ip_addr_t cached;
+  err_t err = dns_gethostbyname(this->host_.c_str(), &cached, &TcpUart::dns_found_, this);
+  if (err == ERR_OK && IP_IS_V4(&cached)) {
+    this->resolved_addr_.store(ip4_addr_get_u32(ip_2_ip4(&cached)));
+    this->have_addr_.store(true);
+    return;
+  }
+  if (err == ERR_INPROGRESS) {
+    this->resolving_.store(true);
+    return;
+  }
+  this->resolve_failed_.store(true);
+}
+
+void TcpUart::try_connect_() {
+  if (this->sock_ >= 0 || millis() < this->next_connect_ms_) {
+    return;
+  }
+  if (this->resolve_failed_.exchange(false)) {
+    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    return;
+  }
+  this->try_resolve_();
+  if (!this->have_addr_.load()) {
+    return;
+  }
+  int fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (fd < 0) {
+    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    return;
+  }
+  int flags = fcntl(fd, F_GETFL, 0);
+  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+  this->apply_socket_options_(fd);
+  struct sockaddr_in dest {};
+  dest.sin_family = AF_INET;
+  dest.sin_port = htons(this->port_);
+  dest.sin_addr.s_addr = this->resolved_addr_.load();
+  int rc = ::connect(fd, reinterpret_cast<struct sockaddr *>(&dest), sizeof(dest));
+  if (rc == 0 || errno == EINPROGRESS) {
+    this->sock_ = fd;
+    this->connecting_ = rc != 0;
+    this->connected_ = rc == 0;
+    return;
+  }
+  ::close(fd);
+  this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+}
+
+void TcpUart::try_listen_() {
+  if (this->listen_ >= 0 || millis() < this->next_connect_ms_) {
+    return;
+  }
+  int fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (fd < 0) {
+    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    return;
+  }
+  int yes = 1;
+  setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+  int flags = fcntl(fd, F_GETFL, 0);
+  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+  struct sockaddr_in local {};
+  local.sin_family = AF_INET;
+  local.sin_port = htons(this->port_);
+  local.sin_addr.s_addr = INADDR_ANY;
+  if (bind(fd, reinterpret_cast<struct sockaddr *>(&local), sizeof(local)) != 0 || listen(fd, 1) != 0) {
+    ESP_LOGW(TAG, "Listen on %u failed", this->port_);
+    ::close(fd);
+    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    return;
+  }
+  this->listen_ = fd;
+  ESP_LOGI(TAG, "Listening on %u", this->port_);
+}
+
+void TcpUart::accept_client_() {
+  if (this->listen_ < 0 || this->sock_ >= 0) {
+    return;
+  }
+  int fd = ::accept(this->listen_, nullptr, nullptr);
+  if (fd < 0) {
+    return;
+  }
+  int flags = fcntl(fd, F_GETFL, 0);
+  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+  this->apply_socket_options_(fd);
+  this->sock_ = fd;
+  this->connected_ = true;
+  ESP_LOGI(TAG, "Client connected");
+}
+
+void TcpUart::read_socket_() {
+  if (this->sock_ < 0) {
+    return;
+  }
+  if (this->connecting_) {
+    int err = 0;
+    socklen_t len = sizeof(err);
+    if (getsockopt(this->sock_, SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0) {
+      this->close_sock_();
+      this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+      return;
+    }
+    this->connecting_ = false;
+    this->connected_ = true;
+    ESP_LOGI(TAG, "Connected to %s:%u", this->host_.c_str(), this->port_);
+  }
+  uint8_t tmp[128];
+  int count = ::recv(this->sock_, tmp, sizeof(tmp), 0);
+  if (count == 0 || (count < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
+    ESP_LOGW(TAG, "Connection lost");
+    this->close_sock_();
+    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+    return;
+  }
+  for (int i = 0; i < count && this->rx_.size() < 1024; i++) {
+    this->rx_.push_back(tmp[i]);
+  }
+}
+
+void TcpUart::send_bytes_(const uint8_t *data, size_t len) {
+  if (!this->connected_ || len == 0) {
+    return;
+  }
+  int sent = ::send(this->sock_, data, len, 0);
+  if (sent < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+    ESP_LOGW(TAG, "Send failed");
+    this->close_sock_();
+    this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+  }
+}
+
+void TcpUart::loop() {
+  if (this->server_) {
+    this->try_listen_();
+    this->accept_client_();
+  } else {
+    this->try_connect_();
+  }
+  this->read_socket_();
+}
+
+void TcpUart::write_array(const uint8_t *data, size_t len) { this->send_bytes_(data, len); }
+
+bool TcpUart::peek_byte(uint8_t *data) {
+  if (this->rx_.empty()) {
+    return false;
+  }
+  *data = this->rx_.front();
+  return true;
+}
+
+bool TcpUart::read_array(uint8_t *data, size_t len) {
+  if (this->rx_.size() < len) {
+    return false;
+  }
+  for (size_t i = 0; i < len; i++) {
+    data[i] = this->rx_.front();
+    this->rx_.pop_front();
+  }
+  return true;
+}
+
+size_t TcpUart::available() { return this->rx_.size(); }
+
+uart::UARTFlushResult TcpUart::flush() { return uart::UARTFlushResult::UART_FLUSH_RESULT_ASSUMED_SUCCESS; }
+
+}  // namespace tcp_uart
+}  // namespace esphome
