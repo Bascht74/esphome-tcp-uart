@@ -1,0 +1,23 @@
+esphome:
+  name: client-without-host
+  min_version: 2026.9.0
+
+esp32:
+  board: esp32dev
+
+wifi:
+  ssid: "test-ssid"
+  password: "test-password"
+
+logger:
+
+external_components:
+  - source:
+      type: local
+      path: ../../components
+
+tcp_uart:
+  - id: broken
+    role: client
+    port: 502
+    protocol: modbus

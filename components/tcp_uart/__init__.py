@@ -3,7 +3,8 @@ import esphome.config_validation as cv
 from esphome.components import uart
 from esphome.const import CONF_BAUD_RATE, CONF_ID, CONF_PORT
 
-DEPENDENCIES = ["network", "uart"]
+DEPENDENCIES = ["network"]
+AUTO_LOAD = ["uart"]
 MULTI_CONF = True
 
 tcp_uart_ns = cg.esphome_ns.namespace("tcp_uart")
@@ -23,7 +24,7 @@ def _validate(config):
     return config
 
 
-CONFIG_SCHEMA = cv.All(
+ITEM_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(TcpUart),
@@ -39,7 +40,20 @@ CONFIG_SCHEMA = cv.All(
 )
 
 
+def _config_schema(value):
+    # AUTO_LOAD inserts an empty entry so this component's sources are built
+    # when only the modbus_tcp_uart alias is configured.
+    if isinstance(value, dict) and len(value) == 0:
+        return value
+    return ITEM_SCHEMA(value)
+
+
+CONFIG_SCHEMA = _config_schema
+
+
 async def to_code(config):
+    if CONF_ID not in config:
+        return
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     cg.add(var.set_server(config[CONF_ROLE] == "server"))

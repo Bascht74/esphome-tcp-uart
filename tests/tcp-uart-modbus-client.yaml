@@ -1,0 +1,44 @@
+esphome:
+  name: tcp-uart-modbus-client
+  min_version: 2026.9.0
+
+esp32:
+  board: esp32dev
+
+wifi:
+  ssid: "test-ssid"
+  password: "test-password"
+
+logger:
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+tcp_uart:
+  - id: meter_link
+    role: client
+    host: 192.0.2.10
+    port: 502
+    protocol: modbus
+
+modbus:
+  - id: meter_bus
+    uart_id: meter_link
+    role: client
+    send_wait_time: 200ms
+
+modbus_controller:
+  - id: meter
+    modbus_id: meter_bus
+    address: 1
+    update_interval: 5s
+
+sensor:
+  - platform: modbus_controller
+    modbus_controller_id: meter
+    name: "Test register"
+    address: 0
+    register_type: read
+    value_type: U_WORD

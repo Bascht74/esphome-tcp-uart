@@ -148,6 +148,16 @@ uart_tcp:
 
 Both are timers inside the hub. They do not change the TCP stream. A real bus sets its own `baud_rate` on its own `uart:` entry. `tcp_uart` stores `baud_rate` for the same kind of check and does not use it as a clock. `uart_tcp` uses the baud of its hardware UART both to clock the pins and, in `protocol: modbus`, as the 3.5-character gap between RTU frames.
 
+## Tests
+
+GitHub Actions installs ESPHome 2026.9.0 and runs [script/ci](script/ci). That validates every file in `tests/` with `esphome config`. Files in `tests/invalid/` must be rejected. A second job compiles [tests/compile.yaml](tests/compile.yaml) for ESP32 (ESP-IDF), which builds `tcp_uart` in both protocols and `uart_tcp`.
+
+```bash
+pip install "esphome==2026.9.0"
+./script/ci
+esphome compile tests/compile.yaml
+```
+
 ## Compatibility
 
 Both components implement only the UART byte methods. They do not call `modbus_controller` internals. The helper-shim removal in 2026.10 does not apply. They break if `UARTComponent` gains a new pure virtual. That set is the same in 2026.9.0 and current `dev`.

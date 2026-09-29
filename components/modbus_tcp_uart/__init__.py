@@ -3,7 +3,8 @@ import esphome.config_validation as cv
 from esphome.components.tcp_uart import CONF_HOST, CONF_ROLE, TcpUart, _validate
 from esphome.const import CONF_BAUD_RATE, CONF_ID, CONF_PORT
 
-DEPENDENCIES = ["tcp_uart"]
+DEPENDENCIES = ["network"]
+AUTO_LOAD = ["tcp_uart"]
 MULTI_CONF = True
 
 CONF_RECONNECT_INTERVAL = "reconnect_interval"

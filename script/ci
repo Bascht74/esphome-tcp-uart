@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Validate every fixture with the installed ESPHome. Invalid fixtures must fail.
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+
+if ! command -v esphome >/dev/null 2>&1; then
+  echo "esphome is not installed. pip install 'esphome==2026.9.0'" >&2
+  exit 1
+fi
+
+echo "ESPHome $(esphome version)"
+
+shopt -s nullglob
+valid=("$root"/tests/*.yaml)
+invalid=("$root"/tests/invalid/*.yaml)
+
+if [[ ${#valid[@]} -eq 0 ]]; then
+  echo "no valid fixtures" >&2
+  exit 1
+fi
+
+for file in "${valid[@]}"; do
+  echo "== config $file"
+  esphome config "$file" >/tmp/esphome-config.out
+done
+
+for file in "${invalid[@]}"; do
+  echo "== expect invalid $file"
+  if esphome config "$file" >/tmp/esphome-config.out 2>&1; then
+    echo "expected this config to fail: $file" >&2
+    exit 1
+  fi
+done
+
+echo "config tests passed (${#valid[@]} valid, ${#invalid[@]} invalid)"

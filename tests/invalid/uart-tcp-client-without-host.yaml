@@ -1,0 +1,29 @@
+esphome:
+  name: uart-tcp-client-without-host
+  min_version: 2026.9.0
+
+esp32:
+  board: esp32dev
+
+wifi:
+  ssid: "test-ssid"
+  password: "test-password"
+
+logger:
+
+external_components:
+  - source:
+      type: local
+      path: ../../components
+
+uart:
+  - id: bus
+    tx_pin: GPIO17
+    rx_pin: GPIO16
+    baud_rate: 9600
+
+uart_tcp:
+  - uart_id: bus
+    role: client
+    port: 502
+    protocol: modbus

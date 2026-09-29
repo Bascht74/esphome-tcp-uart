@@ -1,0 +1,61 @@
+esphome:
+  name: compile-both
+  min_version: 2026.9.0
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+wifi:
+  ssid: "test-ssid"
+  password: "test-password"
+
+logger:
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+tcp_uart:
+  - id: meter_link
+    role: client
+    host: 192.0.2.10
+    port: 502
+    protocol: modbus
+  - id: raw_link
+    role: server
+    port: 5000
+    protocol: raw
+
+uart:
+  - id: bus
+    tx_pin: GPIO17
+    rx_pin: GPIO16
+    baud_rate: 9600
+
+modbus:
+  - id: meter_bus
+    uart_id: meter_link
+    role: client
+
+modbus_controller:
+  - id: meter
+    modbus_id: meter_bus
+    address: 1
+    update_interval: 5s
+
+sensor:
+  - platform: modbus_controller
+    modbus_controller_id: meter
+    name: "Compile register"
+    address: 0
+    register_type: read
+    value_type: U_WORD
+
+uart_tcp:
+  - uart_id: bus
+    role: server
+    port: 1502
+    protocol: modbus
