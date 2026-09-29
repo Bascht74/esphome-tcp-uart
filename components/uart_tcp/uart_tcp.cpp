@@ -39,6 +39,9 @@ void UartTcp::set_link_up_(bool up) {
     return;
   }
   this->connected_ = up;
+  if (up) {
+    this->last_io_ms_ = millis();
+  }
   this->publish_link_();
 }
 
@@ -50,7 +53,15 @@ void UartTcp::publish_link_() {
 
 void UartTcp::setup() {
   this->tcp_buf_.reserve(300);
+  if (this->parent_ != nullptr) {
+    this->set_baud_rate(this->parent_->get_baud_rate());
+  }
+  this->set_data_bits(8);
+  this->set_stop_bits(1);
   this->publish_link_();
+  if (this->drop_sensor_ != nullptr) {
+    this->drop_sensor_->publish_state(0);
+  }
 }
 
 void UartTcp::dump_config() {
@@ -68,9 +79,11 @@ void UartTcp::dump_config() {
 void UartTcp::on_shutdown() {
   this->close_sock_();
   this->close_listen_();
+  this->close_taps_();
 }
 
 void UartTcp::close_sock_() {
+  bool was = this->connected_;
   if (this->sock_ >= 0) {
     ::shutdown(this->sock_, SHUT_RDWR);
     ::close(this->sock_);
@@ -81,7 +94,11 @@ void UartTcp::close_sock_() {
   this->tcp_buf_.clear();
   this->uart_buf_.clear();
   this->wait_uart_ = false;
+  this->wait_local_ = false;
   this->wait_tcp_ = false;
+  if (was) {
+    this->note_drop_();
+  }
 }
 
 void UartTcp::close_listen_() {
@@ -211,6 +228,10 @@ void UartTcp::accept_client_() {
   if (fd < 0) {
     return;
   }
+  if (!this->peer_allowed_(fd)) {
+    ::close(fd);
+    return;
+  }
   int flags = fcntl(fd, F_GETFL, 0);
   fcntl(fd, F_SETFL, flags | O_NONBLOCK);
   this->apply_socket_options_(fd);
@@ -245,6 +266,7 @@ void UartTcp::read_socket_() {
     return;
   }
   if (count > 0) {
+    this->note_io_();
     this->tcp_buf_.insert(this->tcp_buf_.end(), tmp, tmp + count);
   }
 }
@@ -267,13 +289,14 @@ void UartTcp::send_all_(const uint8_t *data, size_t len) {
     }
     sent_total += static_cast<size_t>(sent);
   }
+  this->note_io_();
 }
 
 void UartTcp::pull_uart_() {
   uint8_t tmp[128];
-  while (this->available() > 0 && this->uart_buf_.size() < 512) {
-    size_t want = std::min(this->available(), sizeof(tmp));
-    if (!this->read_array(tmp, want)) {
+  while (this->parent_->available() > 0 && this->uart_buf_.size() < 512) {
+    size_t want = std::min(this->parent_->available(), sizeof(tmp));
+    if (!this->parent_->read_array(tmp, want)) {
       break;
     }
     this->uart_buf_.insert(this->uart_buf_.end(), tmp, tmp + want);
@@ -300,11 +323,13 @@ uint32_t UartTcp::frame_gap_us_() const {
 
 void UartTcp::pump_raw_() {
   if (!this->tcp_buf_.empty()) {
-    this->write_array(this->tcp_buf_.data(), this->tcp_buf_.size());
+    this->send_tap_(this->tcp_buf_.data(), this->tcp_buf_.size());
+    this->parent_->write_array(this->tcp_buf_.data(), this->tcp_buf_.size());
     this->tcp_buf_.clear();
   }
   this->pull_uart_();
   if (!this->uart_buf_.empty()) {
+    this->send_tap_(this->uart_buf_.data(), this->uart_buf_.size());
     this->send_all_(this->uart_buf_.data(), this->uart_buf_.size());
     this->uart_buf_.clear();
   }
@@ -358,8 +383,9 @@ void UartTcp::write_rtu_(const uint8_t *pdu, size_t pdu_len, uint8_t unit) {
   uint16_t crc = crc16(frame.data(), frame.size());
   frame.push_back(crc & 0xFF);
   frame.push_back(crc >> 8);
-  this->write_array(frame.data(), frame.size());
-  this->flush();
+  this->send_tap_(frame.data(), frame.size());
+  this->parent_->write_array(frame.data(), frame.size());
+  this->parent_->flush();
 }
 
 void UartTcp::send_mbap_(uint16_t txn, uint8_t unit, const uint8_t *pdu, size_t pdu_len) {
@@ -382,18 +408,34 @@ void UartTcp::send_gateway_fail_(uint16_t txn, uint8_t unit, uint8_t function) {
 }
 
 void UartTcp::pump_modbus_() {
-  if (this->wait_uart_) {
+  if (this->wait_uart_ || this->wait_local_) {
     this->pull_uart_();
     std::vector<uint8_t> pdu;
     uint8_t unit = 0;
     if (this->take_rtu_(&pdu, &unit)) {
-      this->send_mbap_(this->pending_txn_, unit, pdu.data(), pdu.size());
-      this->wait_uart_ = false;
+      std::vector<uint8_t> frame;
+      frame.reserve(pdu.size() + 3);
+      frame.push_back(unit);
+      frame.insert(frame.end(), pdu.begin(), pdu.end());
+      uint16_t crc = crc16(frame.data(), frame.size());
+      frame.push_back(crc & 0xFF);
+      frame.push_back(crc >> 8);
+      this->send_tap_(frame.data(), frame.size());
+      if (this->wait_local_) {
+        this->push_local_(frame.data(), frame.size());
+        this->wait_local_ = false;
+      } else {
+        this->send_mbap_(this->pending_txn_, unit, pdu.data(), pdu.size());
+        this->wait_uart_ = false;
+      }
     } else if (millis() - this->wait_started_ms_ > this->response_timeout_ms_) {
       ESP_LOGW(TAG, "RTU response timeout");
       this->uart_buf_.clear();
-      this->send_gateway_fail_(this->pending_txn_, this->pending_unit_, this->pending_function_);
+      if (this->wait_uart_) {
+        this->send_gateway_fail_(this->pending_txn_, this->pending_unit_, this->pending_function_);
+      }
       this->wait_uart_ = false;
+      this->wait_local_ = false;
     }
     return;
   }
@@ -414,6 +456,13 @@ void UartTcp::pump_modbus_() {
     return;
   }
   if (this->server_) {
+    if (this->local_frame_ready_()) {
+      this->start_local_();
+      return;
+    }
+    if (!this->connected_) {
+      return;
+    }
     std::vector<uint8_t> pdu;
     uint8_t unit = 0;
     uint16_t txn = 0;
@@ -444,20 +493,230 @@ void UartTcp::pump_modbus_() {
   this->wait_started_ms_ = millis();
 }
 
+void UartTcp::write_array(const uint8_t *data, size_t len) {
+  if (!this->server_ || !this->modbus_ || len == 0) {
+    return;
+  }
+  this->local_tx_.insert(this->local_tx_.end(), data, data + len);
+  if (this->local_tx_.size() > 300) {
+    this->local_tx_.clear();
+  }
+  this->last_local_us_ = micros();
+}
+
+bool UartTcp::peek_byte(uint8_t *data) {
+  if (this->local_rx_.empty()) {
+    return false;
+  }
+  *data = this->local_rx_.front();
+  return true;
+}
+
+bool UartTcp::read_array(uint8_t *data, size_t len) {
+  if (this->local_rx_.size() < len) {
+    return false;
+  }
+  for (size_t i = 0; i < len; i++) {
+    data[i] = this->local_rx_.front();
+    this->local_rx_.pop_front();
+  }
+  return true;
+}
+
+size_t UartTcp::available() { return this->local_rx_.size(); }
+
+uart::UARTFlushResult UartTcp::flush() {
+  if (this->local_tx_.size() >= 4) {
+    this->last_local_us_ = micros() - this->frame_gap_us_() - 1;
+  }
+  return uart::UARTFlushResult::UART_FLUSH_RESULT_ASSUMED_SUCCESS;
+}
+
+void UartTcp::note_drop_() {
+  this->drops_++;
+  if (this->drop_sensor_ != nullptr) {
+    this->drop_sensor_->publish_state(this->drops_);
+  }
+}
+
+void UartTcp::note_io_() { this->last_io_ms_ = millis(); }
+
+void UartTcp::check_idle_() {
+  if (!this->connected_ || this->connecting_) {
+    return;
+  }
+  uint32_t limit = this->server_ ? this->idle_timeout_ms_ : this->stall_timeout_ms_;
+  if (limit == 0 || this->last_io_ms_ == 0) {
+    return;
+  }
+  if (millis() - this->last_io_ms_ < limit) {
+    return;
+  }
+  ESP_LOGW(TAG, "Link idle, closing");
+  this->close_sock_();
+  this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+}
+
+void UartTcp::add_allowed(const std::string &host) {
+  ip_addr_t addr;
+  if (!ipaddr_aton(host.c_str(), &addr)) {
+    ESP_LOGW(TAG, "Ignored allowed host %s", host.c_str());
+    return;
+  }
+  this->allowed_.push_back(ip_2_ip4(&addr)->addr);
+}
+
+bool UartTcp::peer_allowed_(int fd) {
+  if (this->allowed_.empty()) {
+    return true;
+  }
+  struct sockaddr_in addr {};
+  socklen_t len = sizeof(addr);
+  if (::getpeername(fd, reinterpret_cast<struct sockaddr *>(&addr), &len) != 0) {
+    return false;
+  }
+  for (uint32_t allowed : this->allowed_) {
+    if (allowed == addr.sin_addr.s_addr) {
+      return true;
+    }
+  }
+  ESP_LOGW(TAG, "Rejected TCP peer");
+  return false;
+}
+
+void UartTcp::send_tap_(const uint8_t *data, size_t len) {
+  if (len == 0) {
+    return;
+  }
+  for (size_t i = 0; i < this->taps_.size();) {
+    int sent = ::send(this->taps_[i], data, len, 0);
+    if (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      i++;
+      continue;
+    }
+    if (sent <= 0) {
+      ::close(this->taps_[i]);
+      this->taps_.erase(this->taps_.begin() + i);
+      continue;
+    }
+    i++;
+  }
+}
+
+void UartTcp::try_listen_tap_() {
+  if (this->tap_port_ == 0 || this->listen_tap_ >= 0 || millis() < this->next_connect_ms_) {
+    return;
+  }
+  int fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (fd < 0) {
+    return;
+  }
+  int yes = 1;
+  setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+  int flags = fcntl(fd, F_GETFL, 0);
+  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+  struct sockaddr_in local {};
+  local.sin_family = AF_INET;
+  local.sin_port = htons(this->tap_port_);
+  local.sin_addr.s_addr = INADDR_ANY;
+  if (bind(fd, reinterpret_cast<struct sockaddr *>(&local), sizeof(local)) != 0 || listen(fd, 2) != 0) {
+    ESP_LOGW(TAG, "Listen on tap %u failed", this->tap_port_);
+    ::close(fd);
+    return;
+  }
+  this->listen_tap_ = fd;
+  ESP_LOGI(TAG, "Tap listening on %u", this->tap_port_);
+}
+
+void UartTcp::accept_tap_() {
+  if (this->listen_tap_ < 0 || this->taps_.size() >= 2) {
+    return;
+  }
+  int fd = ::accept(this->listen_tap_, nullptr, nullptr);
+  if (fd < 0) {
+    return;
+  }
+  if (!this->peer_allowed_(fd)) {
+    ::close(fd);
+    return;
+  }
+  int flags = fcntl(fd, F_GETFL, 0);
+  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+  this->taps_.push_back(fd);
+  ESP_LOGI(TAG, "Tap connected");
+}
+
+void UartTcp::drain_taps_() {
+  uint8_t tmp[64];
+  for (size_t i = 0; i < this->taps_.size();) {
+    int count = ::recv(this->taps_[i], tmp, sizeof(tmp), 0);
+    if (count == 0 || (count < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
+      ::close(this->taps_[i]);
+      this->taps_.erase(this->taps_.begin() + i);
+      continue;
+    }
+    i++;
+  }
+}
+
+void UartTcp::close_taps_() {
+  for (int fd : this->taps_) {
+    ::close(fd);
+  }
+  this->taps_.clear();
+  if (this->listen_tap_ >= 0) {
+    ::close(this->listen_tap_);
+    this->listen_tap_ = -1;
+  }
+}
+
+bool UartTcp::local_frame_ready_() {
+  return this->local_tx_.size() >= 4 && micros() - this->last_local_us_ >= this->frame_gap_us_();
+}
+
+void UartTcp::start_local_() {
+  uint16_t got = this->local_tx_[this->local_tx_.size() - 2] | (this->local_tx_[this->local_tx_.size() - 1] << 8);
+  uint16_t expect = crc16(this->local_tx_.data(), this->local_tx_.size() - 2);
+  if (got != expect) {
+    ESP_LOGW(TAG, "Local RTU CRC mismatch");
+    this->local_tx_.clear();
+    return;
+  }
+  this->pending_function_ = this->local_tx_[1];
+  this->send_tap_(this->local_tx_.data(), this->local_tx_.size());
+  this->parent_->write_array(this->local_tx_.data(), this->local_tx_.size());
+  this->parent_->flush();
+  this->local_tx_.clear();
+  this->uart_buf_.clear();
+  this->wait_local_ = true;
+  this->wait_started_ms_ = millis();
+  this->last_uart_us_ = micros();
+}
+
+void UartTcp::push_local_(const uint8_t *data, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    if (this->local_rx_.size() >= 512) {
+      this->local_rx_.pop_front();
+    }
+    this->local_rx_.push_back(data[i]);
+  }
+}
+
 void UartTcp::loop() {
   if (this->server_) {
     this->try_listen_();
     this->accept_client_();
+    this->try_listen_tap_();
+    this->accept_tap_();
+    this->drain_taps_();
   } else {
     this->try_connect_();
   }
   this->read_socket_();
-  if (!this->connected_) {
-    return;
-  }
-  if (this->modbus_) {
+  this->check_idle_();
+  if (this->modbus_ && (this->connected_ || this->server_)) {
     this->pump_modbus_();
-  } else {
+  } else if (this->connected_) {
     this->pump_raw_();
   }
 }

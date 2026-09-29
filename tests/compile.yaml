@@ -43,12 +43,19 @@ modbus:
   - id: meter_bus
     uart_id: meter_link
     role: client
+  - id: shared_bus
+    uart_id: gate
+    role: client
 
 modbus_controller:
   - id: meter
     modbus_id: meter_bus
     address: 1
     update_interval: 5s
+  - id: shared_meter
+    modbus_id: shared_bus
+    address: 2
+    update_interval: 30s
 
 sensor:
   - platform: modbus_controller
@@ -57,11 +64,24 @@ sensor:
     address: 0
     register_type: read
     value_type: U_WORD
+  - platform: modbus_controller
+    modbus_controller_id: shared_meter
+    name: "Shared register"
+    address: 1
+    register_type: read
+    value_type: U_WORD
 
 uart_tcp:
-  - uart_id: bus
+  - id: gate
+    uart_id: bus
     role: server
     port: 1502
     protocol: modbus
+    tap_port: 1503
+    idle_timeout: 60s
+    allowed_hosts:
+      - 192.0.2.50
     connected:
       name: "Bus link"
+    disconnects:
+      name: "Bus drops"

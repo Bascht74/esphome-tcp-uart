@@ -2,6 +2,7 @@
 
 #include "esphome/core/component.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/sensor/sensor.h"
 #include "esphome/components/uart/uart_component.h"
 
 #include "lwip/ip_addr.h"
@@ -22,9 +23,13 @@ class TcpUart : public uart::UARTComponent, public Component {
   void set_host(const std::string &host) { this->host_ = host; }
   void set_port(uint16_t port) { this->port_ = port; }
   void set_reconnect_interval(uint32_t ms) { this->reconnect_interval_ms_ = ms; }
+  void set_stall_timeout(uint32_t ms) { this->stall_timeout_ms_ = ms; }
+  void set_idle_timeout(uint32_t ms) { this->idle_timeout_ms_ = ms; }
   void set_server(bool server) { this->server_ = server; }
   void set_modbus(bool modbus) { this->modbus_ = modbus; }
   void set_connected_sensor(binary_sensor::BinarySensor *sensor) { this->connected_sensor_ = sensor; }
+  void set_drop_sensor(sensor::Sensor *sensor) { this->drop_sensor_ = sensor; }
+  void add_allowed(const std::string &host);
 
   void setup() override;
   void loop() override;
@@ -57,6 +62,10 @@ class TcpUart : public uart::UARTComponent, public Component {
   void apply_socket_options_(int fd);
   void set_link_up_(bool up);
   void publish_link_();
+  void note_drop_();
+  void note_io_();
+  void check_idle_();
+  bool peer_allowed_(int fd);
   static void dns_found_(const char *name, const ip_addr_t *addr, void *arg);
 
   std::string host_;
@@ -69,10 +78,15 @@ class TcpUart : public uart::UARTComponent, public Component {
   bool connected_{false};
   uint32_t next_connect_ms_{0};
   uint32_t reconnect_interval_ms_{5000};
+  uint32_t stall_timeout_ms_{0};
+  uint32_t idle_timeout_ms_{0};
+  uint32_t last_io_ms_{0};
+  uint32_t drops_{0};
   uint16_t txn_{0};
   uint16_t last_request_txn_{0};
   bool response_pending_{false};
   binary_sensor::BinarySensor *connected_sensor_{nullptr};
+  sensor::Sensor *drop_sensor_{nullptr};
 
   std::atomic<bool> resolving_{false};
   std::atomic<bool> resolve_failed_{false};
@@ -82,6 +96,7 @@ class TcpUart : public uart::UARTComponent, public Component {
   std::deque<uint8_t> rx_;
   std::vector<uint8_t> tx_;
   std::vector<uint8_t> tcp_buf_;
+  std::vector<uint32_t> allowed_;
 };
 
 }  // namespace tcp_uart

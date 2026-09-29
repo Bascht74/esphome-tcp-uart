@@ -27,6 +27,7 @@ external_components:
 - [`uart_tcp`](#uart_tcp)
   - [Client](#uart_tcp-client)
   - [Server](#uart_tcp-server)
+  - [Sharing the pins](#sharing-the-pins)
 - [Both roles](#both-roles)
 
 ## tcp_uart
@@ -50,7 +51,9 @@ tcp_uart:
 | `port` | — | Required. Port on that host. |
 | `protocol` | `raw` | `modbus` if the peer speaks Modbus TCP. |
 | `reconnect_interval` | 5s | Pause after a failed dial or a dropped link. |
+| `stall_timeout` | 0s | Client only. Close and dial again after this long with no bytes. `0s` leaves the socket up. |
 | `connected` | — | Optional. On while this TCP connection is up. |
+| `disconnects` | — | Optional. How often the TCP connection dropped since boot. |
 
 ### `tcp_uart` server
 
@@ -69,7 +72,10 @@ tcp_uart:
 | `port` | — | Required. Port on this device. |
 | `protocol` | `raw` | `modbus` if the peer speaks Modbus TCP. |
 | `reconnect_interval` | 5s | Pause after a failed listen or a dropped link. |
+| `idle_timeout` | 0s | Server only. Close a peer that has been silent this long. `0s` leaves it up. |
+| `allowed_hosts` | — | Server only. IP addresses that may connect. Empty allows any. |
 | `connected` | — | Optional. On while this TCP connection is up. |
+| `disconnects` | — | Optional. How often the TCP connection dropped since boot. |
 
 ## uart_tcp
 
@@ -95,7 +101,9 @@ uart_tcp:
 | `port` | — | Required. Port on that host. |
 | `protocol` | `raw` | `modbus` if the peer speaks Modbus TCP. |
 | `reconnect_interval` | 5s | Pause after a failed dial or a dropped link. |
+| `stall_timeout` | 0s | Client only. Close and dial again after this long with no bytes. `0s` leaves the socket up. |
 | `connected` | — | Optional. On while this TCP connection is up. |
+| `disconnects` | — | Optional. How often the TCP connection dropped since boot. |
 | `response_timeout` | 300ms | Only for `protocol: modbus`. |
 
 ### `uart_tcp` server
@@ -114,8 +122,31 @@ uart_tcp:
 | `port` | — | Required. Port on this device. |
 | `protocol` | `raw` | `modbus` if the peer speaks Modbus TCP. |
 | `reconnect_interval` | 5s | Pause after a failed listen or a dropped link. |
+| `idle_timeout` | 0s | Server only. Close a peer that has been silent this long. `0s` leaves it up. |
+| `allowed_hosts` | — | Server only. IP addresses that may connect. Empty allows any. |
 | `connected` | — | Optional. On while this TCP connection is up. |
+| `disconnects` | — | Optional. How often the TCP connection dropped since boot. |
 | `response_timeout` | 300ms | Only for `protocol: modbus`. |
+| `tap_port` | — | Second port. Connections there hear both directions and cannot send. |
+
+`rx_buffer_size` on the hardware `uart:` is the pin buffer. The [UART](https://esphome.io/components/uart.html) page documents it. These components do not add another knob. Modbus frames are short, so the default is enough.
+
+### Sharing the pins
+
+Only `uart_tcp` with `protocol: modbus` and a listening role. Use its id as `uart_id` of the local Modbus hub. The component owns the pins. The local controller and one TCP client each hand it a frame. It sends one at a time, the local frame first, and returns the answer only to the sender.
+
+```yaml
+uart_tcp:
+  - id: gate
+    uart_id: bus
+    port: 502
+    protocol: modbus
+    tap_port: 1503
+
+modbus:
+  - uart_id: gate
+    id: local_bus
+```
 
 ## Both roles
 

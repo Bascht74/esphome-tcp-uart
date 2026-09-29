@@ -13,6 +13,8 @@
 
 #include "lwip/dns.h"
 #include "lwip/ip4_addr.h"
+#include "lwip/ip_addr.h"
+#include "lwip/ip4_addr.h"
 
 namespace esphome {
 namespace tcp_uart {
@@ -26,6 +28,9 @@ void TcpUart::set_link_up_(bool up) {
     return;
   }
   this->connected_ = up;
+  if (up) {
+    this->last_io_ms_ = millis();
+  }
   this->publish_link_();
 }
 
@@ -35,7 +40,12 @@ void TcpUart::publish_link_() {
   }
 }
 
-void TcpUart::setup() { this->publish_link_(); }
+void TcpUart::setup() {
+  this->publish_link_();
+  if (this->drop_sensor_ != nullptr) {
+    this->drop_sensor_->publish_state(0);
+  }
+}
 
 void TcpUart::dump_config() {
   ESP_LOGCONFIG(TAG, "TCP UART:");
@@ -54,6 +64,7 @@ void TcpUart::on_shutdown() {
 }
 
 void TcpUart::close_sock_() {
+  bool was = this->connected_;
   if (this->sock_ >= 0) {
     ::shutdown(this->sock_, SHUT_RDWR);
     ::close(this->sock_);
@@ -65,6 +76,9 @@ void TcpUart::close_sock_() {
   this->tx_.clear();
   this->tcp_buf_.clear();
   this->response_pending_ = false;
+  if (was) {
+    this->note_drop_();
+  }
 }
 
 void TcpUart::close_listen_() {
@@ -194,6 +208,10 @@ void TcpUart::accept_client_() {
   if (fd < 0) {
     return;
   }
+  if (!this->peer_allowed_(fd)) {
+    ::close(fd);
+    return;
+  }
   int flags = fcntl(fd, F_GETFL, 0);
   fcntl(fd, F_SETFL, flags | O_NONBLOCK);
   this->apply_socket_options_(fd);
@@ -227,12 +245,16 @@ void TcpUart::read_socket_() {
     return;
   }
   if (count > 0 && this->modbus_) {
+    this->note_io_();
     this->tcp_buf_.insert(this->tcp_buf_.end(), tmp, tmp + count);
     this->extract_frames_();
     return;
   }
   for (int i = 0; i < count && this->rx_.size() < 1024; i++) {
     this->rx_.push_back(tmp[i]);
+  }
+  if (count > 0) {
+    this->note_io_();
   }
 }
 
@@ -252,6 +274,59 @@ void TcpUart::send_bytes_(const uint8_t *data, size_t len) {
     this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
     return;
   }
+  this->note_io_();
+}
+
+void TcpUart::note_drop_() {
+  this->drops_++;
+  if (this->drop_sensor_ != nullptr) {
+    this->drop_sensor_->publish_state(this->drops_);
+  }
+}
+
+void TcpUart::note_io_() { this->last_io_ms_ = millis(); }
+
+void TcpUart::check_idle_() {
+  if (!this->connected_ || this->connecting_) {
+    return;
+  }
+  uint32_t limit = this->server_ ? this->idle_timeout_ms_ : this->stall_timeout_ms_;
+  if (limit == 0 || this->last_io_ms_ == 0) {
+    return;
+  }
+  if (millis() - this->last_io_ms_ < limit) {
+    return;
+  }
+  ESP_LOGW(TAG, "Link idle, closing");
+  this->close_sock_();
+  this->next_connect_ms_ = millis() + this->reconnect_interval_ms_;
+}
+
+void TcpUart::add_allowed(const std::string &host) {
+  ip_addr_t addr;
+  if (!ipaddr_aton(host.c_str(), &addr)) {
+    ESP_LOGW(TAG, "Ignored allowed host %s", host.c_str());
+    return;
+  }
+  this->allowed_.push_back(ip_2_ip4(&addr)->addr);
+}
+
+bool TcpUart::peer_allowed_(int fd) {
+  if (this->allowed_.empty()) {
+    return true;
+  }
+  struct sockaddr_in addr {};
+  socklen_t len = sizeof(addr);
+  if (::getpeername(fd, reinterpret_cast<struct sockaddr *>(&addr), &len) != 0) {
+    return false;
+  }
+  for (uint32_t allowed : this->allowed_) {
+    if (allowed == addr.sin_addr.s_addr) {
+      return true;
+    }
+  }
+  ESP_LOGW(TAG, "Rejected TCP peer");
+  return false;
 }
 
 void TcpUart::loop() {
@@ -262,6 +337,7 @@ void TcpUart::loop() {
     this->try_connect_();
   }
   this->read_socket_();
+  this->check_idle_();
 }
 
 void TcpUart::push_rx_(uint8_t byte) {

@@ -27,6 +27,7 @@ external_components:
 - [`uart_tcp`](#uart_tcp)
   - [Client](#uart_tcp-client)
   - [Server](#uart_tcp-server)
+  - [Pins teilen](#pins-teilen)
 - [Beide Rollen](#beide-rollen)
 
 ## tcp_uart
@@ -50,7 +51,9 @@ tcp_uart:
 | `port` | — | Pflicht. Port auf diesem Host. |
 | `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
 | `reconnect_interval` | 5s | Pause nach Fehlwahl oder Abbruch. |
+| `stall_timeout` | 0s | Nur Client. Nach dieser Stille neu wählen. `0s` lässt den Socket stehen. |
 | `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
+| `disconnects` | — | Optional. Wie oft die TCP-Verbindung seit dem Start abbrach. |
 
 ### `tcp_uart` Server
 
@@ -69,7 +72,10 @@ tcp_uart:
 | `port` | — | Pflicht. Port auf diesem Gerät. |
 | `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
 | `reconnect_interval` | 5s | Pause nach fehlgeschlagenem Lauschen oder Abbruch. |
+| `idle_timeout` | 0s | Nur Server. Trennt eine Gegenstelle nach dieser Stille. `0s` lässt sie stehen. |
+| `allowed_hosts` | — | Nur Server. IP-Adressen, die verbinden dürfen. Leer lässt alle zu. |
 | `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
+| `disconnects` | — | Optional. Wie oft die TCP-Verbindung seit dem Start abbrach. |
 
 ## uart_tcp
 
@@ -95,7 +101,9 @@ uart_tcp:
 | `port` | — | Pflicht. Port auf diesem Host. |
 | `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
 | `reconnect_interval` | 5s | Pause nach Fehlwahl oder Abbruch. |
+| `stall_timeout` | 0s | Nur Client. Nach dieser Stille neu wählen. `0s` lässt den Socket stehen. |
 | `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
+| `disconnects` | — | Optional. Wie oft die TCP-Verbindung seit dem Start abbrach. |
 | `response_timeout` | 300ms | Nur bei `protocol: modbus`. |
 
 ### `uart_tcp` Server
@@ -114,8 +122,31 @@ uart_tcp:
 | `port` | — | Pflicht. Port auf diesem Gerät. |
 | `protocol` | `raw` | `modbus`, wenn die Gegenstelle Modbus-TCP spricht. |
 | `reconnect_interval` | 5s | Pause nach fehlgeschlagenem Lauschen oder Abbruch. |
+| `idle_timeout` | 0s | Nur Server. Trennt eine Gegenstelle nach dieser Stille. `0s` lässt sie stehen. |
+| `allowed_hosts` | — | Nur Server. IP-Adressen, die verbinden dürfen. Leer lässt alle zu. |
 | `connected` | — | Optional. An, solange diese TCP-Verbindung steht. |
+| `disconnects` | — | Optional. Wie oft die TCP-Verbindung seit dem Start abbrach. |
 | `response_timeout` | 300ms | Nur bei `protocol: modbus`. |
+| `tap_port` | — | Zweiter Port. Verbindungen dort hören beide Richtungen und können nicht senden. |
+
+`rx_buffer_size` an der Hardware-`uart:` ist der Puffer der Pins. Die [UART](https://esphome.io/components/uart.html) beschreibt ihn. Diese Komponenten haben keinen zweiten. Modbus-Telegramme sind kurz, der Standard reicht.
+
+### Pins teilen
+
+Nur `uart_tcp` mit `protocol: modbus` und lauschender Rolle. Die Id ist die `uart_id` des lokalen Modbus-Hubs. Die Komponente besitzt die Pins. Der lokale Controller und ein TCP-Client geben ihr je ein Telegramm. Sie sendet immer nur eines, das lokale zuerst, und gibt die Antwort nur an den Absender zurück.
+
+```yaml
+uart_tcp:
+  - id: gate
+    uart_id: bus
+    port: 502
+    protocol: modbus
+    tap_port: 1503
+
+modbus:
+  - uart_id: gate
+    id: local_bus
+```
 
 ## Beide Rollen
 
