@@ -602,7 +602,18 @@ void TcpUart::send_rtu_frame_() {
 
 void TcpUart::write_array(const uint8_t *data, size_t len) {
   if (this->modbus_) {
+    // The Modbus component writes one whole RTU frame and does not call
+    // flush() unless a flow-control pin is set. Send it here once the CRC matches.
+    size_t before = this->tx_len_;
     append_buf(this->tx_, &this->tx_len_, sizeof(this->tx_), data, len);
+    if (before == 0 && this->tx_len_ >= 4) {
+      uint16_t crc = crc16(this->tx_, this->tx_len_ - 2);
+      uint16_t got = this->tx_[this->tx_len_ - 2] |
+                     (static_cast<uint16_t>(this->tx_[this->tx_len_ - 1]) << 8);
+      if (crc == got) {
+        this->send_rtu_frame_();
+      }
+    }
     return;
   }
   this->send_bytes_(data, len);
