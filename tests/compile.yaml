@@ -78,7 +78,7 @@ uart_tcp:
     port: 1502
     protocol: modbus
     tap_port: 1503
-    idle_timeout: 60s
+    timeout: 60s
     allowed_hosts:
       - 192.0.2.50
     connected:

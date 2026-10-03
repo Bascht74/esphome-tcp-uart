@@ -39,8 +39,7 @@ public:
     this->reconnect_interval_ms_ = ms;
   }
   void set_response_timeout(uint32_t ms) { this->response_timeout_ms_ = ms; }
-  void set_stall_timeout(uint32_t ms) { this->stall_timeout_ms_ = ms; }
-  void set_idle_timeout(uint32_t ms) { this->idle_timeout_ms_ = ms; }
+  void set_timeout(uint32_t ms) { this->timeout_ms_ = ms; }
   void set_server(bool server) { this->server_ = server; }
   void set_modbus(bool modbus) { this->modbus_ = modbus; }
   void set_connected_sensor(binary_sensor::BinarySensor *sensor) {
@@ -136,8 +135,7 @@ protected:
   uint32_t last_attempt_ms_{0};
   uint32_t reconnect_interval_ms_{5000};
   uint32_t response_timeout_ms_{300};
-  uint32_t stall_timeout_ms_{0};
-  uint32_t idle_timeout_ms_{0};
+  uint32_t timeout_ms_{0};
   uint32_t last_io_ms_{0};
   uint32_t drops_{0};
   uint16_t txn_{0};

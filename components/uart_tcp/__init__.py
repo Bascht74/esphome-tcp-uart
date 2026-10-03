@@ -26,8 +26,7 @@ CONF_RECONNECT_INTERVAL = "reconnect_interval"
 CONF_RESPONSE_TIMEOUT = "response_timeout"
 CONF_CONNECTED = "connected"
 CONF_ADDRESS = "address"
-CONF_STALL_TIMEOUT = "stall_timeout"
-CONF_IDLE_TIMEOUT = "idle_timeout"
+CONF_TIMEOUT = "timeout"
 CONF_DISCONNECTS = "disconnects"
 CONF_ALLOWED_HOSTS = "allowed_hosts"
 CONF_TAP_PORT = "tap_port"
@@ -38,10 +37,6 @@ def _validate(config: ConfigType) -> ConfigType:
         raise cv.Invalid("host is only used when role is client", path=[CONF_HOST])
     if config[CONF_ROLE] == "client" and CONF_HOST not in config:
         raise cv.Invalid("host is required when role is client", path=[CONF_HOST])
-    if config[CONF_ROLE] == "server" and config[CONF_STALL_TIMEOUT].total_milliseconds != 0:
-        raise cv.Invalid("stall_timeout is only used when role is client", path=[CONF_STALL_TIMEOUT])
-    if config[CONF_ROLE] == "client" and config[CONF_IDLE_TIMEOUT].total_milliseconds != 0:
-        raise cv.Invalid("idle_timeout is only used when role is server", path=[CONF_IDLE_TIMEOUT])
     if config[CONF_ROLE] == "client" and CONF_ALLOWED_HOSTS in config:
         raise cv.Invalid("allowed_hosts is only used when role is server", path=[CONF_ALLOWED_HOSTS])
     if config[CONF_ROLE] != "server" and CONF_TAP_PORT in config:
@@ -70,8 +65,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_HOST): cv.string,
             cv.Optional(CONF_RECONNECT_INTERVAL, default="5s"): cv.positive_time_period_milliseconds,
             cv.Optional(CONF_RESPONSE_TIMEOUT, default="300ms"): cv.positive_time_period_milliseconds,
-            cv.Optional(CONF_STALL_TIMEOUT, default="0s"): cv.positive_time_period_milliseconds,
-            cv.Optional(CONF_IDLE_TIMEOUT, default="0s"): cv.positive_time_period_milliseconds,
+            cv.Optional(CONF_TIMEOUT, default="0s"): cv.positive_time_period_milliseconds,
             cv.Optional(CONF_TAP_PORT): cv.port,
             cv.Optional(CONF_ALLOWED_HOSTS): cv.ensure_list(cv.string),
             cv.Optional(CONF_CONNECTED): binary_sensor.binary_sensor_schema(
@@ -104,8 +98,7 @@ async def to_code(config: ConfigType) -> None:
     cg.add(var.set_port(config[CONF_PORT]))
     cg.add(var.set_reconnect_interval(config[CONF_RECONNECT_INTERVAL]))
     cg.add(var.set_response_timeout(config[CONF_RESPONSE_TIMEOUT]))
-    cg.add(var.set_stall_timeout(config[CONF_STALL_TIMEOUT]))
-    cg.add(var.set_idle_timeout(config[CONF_IDLE_TIMEOUT]))
+    cg.add(var.set_timeout(config[CONF_TIMEOUT]))
     if (host := config.get(CONF_HOST)) is not None:
         cg.add(var.set_host(host))
     if (tap_port := config.get(CONF_TAP_PORT)) is not None:
