@@ -5,7 +5,7 @@ This repository adds two components that connect a [UART bus](https://esphome.io
 - `tcp_uart` has no pins. Another component uses its id as `uart_id`.
 - `uart_tcp` copies bytes between a hardware UART and a TCP socket.
 
-Bytes are copied unchanged. Set `protocol: modbus` when the other end speaks Modbus TCP. Loading an [external component](https://esphome.io/components/external_components.html) and setting up [Modbus](https://esphome.io/components/modbus.html) are documented by ESPHome.
+Bytes are copied unchanged. When the other end speaks Modbus TCP, put `modbus_tcp` on the `tcp_uart` id and point the Modbus hub at that. Loading an [external component](https://esphome.io/components/external_components.html) and setting up [Modbus](https://esphome.io/components/modbus.html) are documented by ESPHome.
 
 For ESPHome 2026.8 or newer.
 
@@ -49,6 +49,24 @@ tcp_uart:
 modbus:
   - id: modbus_bus
     uart_id: remote_serial
+```
+
+Modbus TCP (MBAP, port 502) is not this raw socket. `modbus_tcp` strips the header. The hub uses that id:
+
+```yaml
+tcp_uart:
+  - id: meter_tcp
+    host: 192.0.2.10
+    port: 502
+
+modbus_tcp:
+  - id: meter_link
+    tcp_uart_id: meter_tcp
+
+modbus:
+  - id: meter_bus
+    uart_id: meter_link
+    role: client
 ```
 
 #### Configuration variables

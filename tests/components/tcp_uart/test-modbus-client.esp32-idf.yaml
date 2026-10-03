@@ -14,11 +14,14 @@ tcp_uart:
   - id: tcp_uart_1
     host: 192.0.2.10
     port: 502
-    protocol: modbus
+
+modbus_tcp:
+  - id: meter_link
+    tcp_uart_id: tcp_uart_1
 
 modbus:
   - id: modbus_bus
-    uart_id: tcp_uart_1
+    uart_id: meter_link
     role: client
     send_wait_time: 200ms
 

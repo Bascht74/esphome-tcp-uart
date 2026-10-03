@@ -19,11 +19,10 @@ external_components:
       path: ../components
 
 tcp_uart:
-  - id: meter_link
+  - id: meter_tcp
     role: client
     host: 192.0.2.10
     port: 502
-    protocol: modbus
     connected:
       name: "Meter link"
   - id: raw_link
@@ -32,6 +31,10 @@ tcp_uart:
     protocol: raw
     connected:
       name: "Raw link"
+
+modbus_tcp:
+  - id: meter_link
+    tcp_uart_id: meter_tcp
 
 uart:
   - id: bus
