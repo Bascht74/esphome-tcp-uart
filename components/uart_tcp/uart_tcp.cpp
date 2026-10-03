@@ -715,12 +715,10 @@ void UartTcp::check_idle_() {
   if (!this->connected_ || this->connecting_) {
     return;
   }
-  uint32_t limit =
-      this->server_ ? this->idle_timeout_ms_ : this->stall_timeout_ms_;
-  if (limit == 0 || this->last_io_ms_ == 0) {
+  if (this->timeout_ms_ == 0 || this->last_io_ms_ == 0) {
     return;
   }
-  if (loop_time() - this->last_io_ms_ < limit) {
+  if (loop_time() - this->last_io_ms_ < this->timeout_ms_) {
     return;
   }
   ESP_LOGW(TAG, "Link idle, closing");
