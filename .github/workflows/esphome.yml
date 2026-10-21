@@ -24,7 +24,7 @@ jobs:
         run: ./tests/host-run
 
   compile:
-    name: Compile against ESPHome 2026.10.0
+    name: Compile ESP32 against ESPHome 2026.10.0
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,3 +42,22 @@ jobs:
           key: esphome-2026.10.0-${{ runner.os }}
       - name: Compile
         run: esphome compile tests/compile.yaml
+
+  compile-esp8266:
+    name: Compile ESP8266 against ESPHome 2026.10.0
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ESPHome
+        run: pip install "esphome==2026.10.0"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache
+          key: esphome-2026.10.0-esp8266-${{ runner.os }}
+      - name: Compile
+        run: esphome compile tests/compile-esp8266.yaml
