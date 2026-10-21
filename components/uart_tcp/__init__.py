@@ -52,6 +52,7 @@ def _validate(config: ConfigType) -> ConfigType:
 
 
 CONFIG_SCHEMA = cv.All(
+    cv.require_esphome_version(2026, 10, 0),
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(UartTcp),

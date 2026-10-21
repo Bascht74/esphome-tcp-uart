@@ -79,7 +79,7 @@ ITEM_SCHEMA = cv.All(
 )
 
 
-CONFIG_SCHEMA = ITEM_SCHEMA
+CONFIG_SCHEMA = cv.All(cv.require_esphome_version(2026, 10, 0), ITEM_SCHEMA)
 
 
 async def to_code(config: ConfigType) -> None:

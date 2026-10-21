@@ -1,5 +1,4 @@
 #include "uart_tcp.h"
-#include "connect_poll.h"
 
 #include "esphome/core/application.h"
 #include "esphome/core/hal.h"
@@ -390,10 +389,10 @@ void UartTcp::read_socket_() {
   }
   if (this->connecting_) {
     int err = 0;
-    switch (tcp_link::poll_connect_result(*this->sock_, err)) {
-      case tcp_link::ConnectWait::PENDING:
+    switch (socket::poll_connect(*this->sock_, err)) {
+      case socket::ConnectPollResult::CONNECT_POLL_RESULT_PENDING:
         return;
-      case tcp_link::ConnectWait::FAILED:
+      case socket::ConnectPollResult::CONNECT_POLL_RESULT_ERROR:
         ESP_LOGW(TAG, "Connection failed: %d", err);
         this->close_sock_();
         this->note_attempt_();
