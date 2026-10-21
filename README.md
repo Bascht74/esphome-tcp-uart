@@ -58,7 +58,7 @@ modbus:
 - **port** (**Required**, int): The TCP port to connect to.
 - **protocol** (*Optional*, string): `raw` or `modbus`. Defaults to `raw`.
 - **reconnect_interval** (*Optional*, [Time](https://esphome.io/guides/configuration-types#time)): The time to wait before connecting again after a failed or closed connection. Defaults to `5s`.
-- **stall_timeout** (*Optional*, [Time](https://esphome.io/guides/configuration-types#time)): Close the socket and connect again after this long with no bytes. Defaults to `0s`, which leaves the socket open.
+- **timeout** (*Optional*, [Time](https://esphome.io/guides/configuration-types#time)): Close the socket and connect again after this long with no bytes. Defaults to `0s`, which leaves the socket open.
 - **connected** (*Optional*): A [binary sensor](https://esphome.io/components/binary_sensor.html) that reports whether the TCP connection is established.
 - **disconnects** (*Optional*): A [sensor](https://esphome.io/components/sensor.html) that counts how often the TCP connection dropped since boot.
 - **address** (*Optional*): A [text sensor](https://esphome.io/components/text_sensor.html) that publishes `ip:port` of the other end, for example `192.0.2.20:5000`.
@@ -82,7 +82,7 @@ tcp_uart:
 - **port** (**Required**, int): The TCP port to listen on.
 - **protocol** (*Optional*, string): `raw` or `modbus`. Defaults to `raw`.
 - **reconnect_interval** (*Optional*, [Time](https://esphome.io/guides/configuration-types#time)): The time to wait before listening again after a failure. Defaults to `5s`.
-- **idle_timeout** (*Optional*, [Time](https://esphome.io/guides/configuration-types#time)): Close a client that has been silent this long. Defaults to `0s`, which leaves the connection open.
+- **timeout** (*Optional*, [Time](https://esphome.io/guides/configuration-types#time)): Close a client that has been silent this long. Defaults to `0s`, which leaves the connection open.
 - **allowed_hosts** (*Optional*, list): IP addresses that may connect. If omitted, any address may connect.
 - **connected** (*Optional*): A [binary sensor](https://esphome.io/components/binary_sensor.html) that reports whether the TCP connection is established.
 - **disconnects** (*Optional*): A [sensor](https://esphome.io/components/sensor.html) that counts how often the TCP connection dropped since boot.
@@ -124,7 +124,7 @@ uart_tcp:
 - **port** (**Required**, int): The TCP port to connect to.
 - **protocol** (*Optional*, string): `raw` or `modbus`. Defaults to `raw`.
 - **reconnect_interval** (*Optional*, [Time](https://esphome.io/guides/configuration-types#time)): The time to wait before connecting again after a failed or closed connection. Defaults to `5s`.
-- **stall_timeout** (*Optional*, [Time](https://esphome.io/guides/configuration-types#time)): Close the socket and connect again after this long with no bytes. Defaults to `0s`, which leaves the socket open.
+- **timeout** (*Optional*, [Time](https://esphome.io/guides/configuration-types#time)): Close the socket and connect again after this long with no bytes. Defaults to `0s`, which leaves the socket open.
 - **response_timeout** (*Optional*, [Time](https://esphome.io/guides/configuration-types#time)): How long to wait for the UART answer when `protocol` is `modbus`. Defaults to `300ms`.
 - **connected** (*Optional*): A [binary sensor](https://esphome.io/components/binary_sensor.html) that reports whether the TCP connection is established.
 - **disconnects** (*Optional*): A [sensor](https://esphome.io/components/sensor.html) that counts how often the TCP connection dropped since boot.
@@ -155,7 +155,7 @@ uart_tcp:
 - **port** (**Required**, int): The TCP port to listen on.
 - **protocol** (*Optional*, string): `raw` or `modbus`. Defaults to `raw`.
 - **reconnect_interval** (*Optional*, [Time](https://esphome.io/guides/configuration-types#time)): The time to wait before listening again after a failure. Defaults to `5s`.
-- **idle_timeout** (*Optional*, [Time](https://esphome.io/guides/configuration-types#time)): Close a client that has been silent this long. Defaults to `0s`, which leaves the connection open.
+- **timeout** (*Optional*, [Time](https://esphome.io/guides/configuration-types#time)): Close a client that has been silent this long. Defaults to `0s`, which leaves the connection open.
 - **allowed_hosts** (*Optional*, list): IP addresses that may connect. If omitted, any address may connect.
 - **response_timeout** (*Optional*, [Time](https://esphome.io/guides/configuration-types#time)): How long to wait for the UART answer when `protocol` is `modbus`. Defaults to `300ms`.
 - **tap_port** (*Optional*, int): A second port. Connections there receive both directions and cannot send.
