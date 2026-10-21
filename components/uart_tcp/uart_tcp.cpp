@@ -9,9 +9,6 @@
 #include <cstdio>
 #include <cstring>
 
-#include <arpa/inet.h>
-#include <netinet/tcp.h>
-
 #if !defined(USE_HOST) && !defined(USE_ZEPHYR)
 #include "lwip/dns.h"
 #include "lwip/ip4_addr.h"
