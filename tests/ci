@@ -7,14 +7,14 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
 if ! command -v esphome >/dev/null 2>&1; then
-  echo "esphome is not installed. pip install 'esphome==2026.9.0'" >&2
+  echo "esphome is not installed. pip install 'esphome==2026.10.0'" >&2
   exit 1
 fi
 
 echo "ESPHome $(esphome version)"
 
 shopt -s nullglob
-valid=("$root"/tests/compile.yaml "$root"/tests/components/*/test*.yaml)
+valid=("$root"/tests/compile*.yaml "$root"/tests/components/*/test*.yaml)
 invalid=("$root"/tests/invalid/*.yaml)
 
 if [[ ${#valid[@]} -eq 0 || ${#invalid[@]} -eq 0 ]]; then

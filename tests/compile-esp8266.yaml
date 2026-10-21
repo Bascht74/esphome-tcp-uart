@@ -1,0 +1,85 @@
+esphome:
+  name: compile-both-esp8266
+  min_version: 2026.10.0
+
+esp8266:
+  board: d1_mini
+
+wifi:
+  ssid: "test-ssid"
+  password: "test-password"
+
+logger:
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+tcp_uart:
+  - id: meter_link
+    role: client
+    host: 192.0.2.10
+    port: 502
+    protocol: modbus
+    connected:
+      name: "Meter link"
+  - id: raw_link
+    role: server
+    port: 5000
+    protocol: raw
+    connected:
+      name: "Raw link"
+
+uart:
+  - id: bus
+    tx_pin: GPIO1
+    rx_pin: GPIO3
+    baud_rate: 9600
+
+modbus:
+  - id: meter_bus
+    uart_id: meter_link
+    role: client
+  - id: shared_bus
+    uart_id: gate
+    role: client
+
+modbus_controller:
+  - id: meter
+    modbus_id: meter_bus
+    address: 1
+    update_interval: 5s
+  - id: shared_meter
+    modbus_id: shared_bus
+    address: 2
+    update_interval: 30s
+
+sensor:
+  - platform: modbus_controller
+    modbus_controller_id: meter
+    name: "Compile register"
+    address: 0
+    register_type: read
+    value_type: U_WORD
+  - platform: modbus_controller
+    modbus_controller_id: shared_meter
+    name: "Shared register"
+    address: 1
+    register_type: read
+    value_type: U_WORD
+
+uart_tcp:
+  - id: gate
+    uart_id: bus
+    role: server
+    port: 1502
+    protocol: modbus
+    tap_port: 1503
+    timeout: 60s
+    allowed_hosts:
+      - 192.0.2.50
+    connected:
+      name: "Bus link"
+    disconnects:
+      name: "Bus drops"
